@@ -1,10 +1,10 @@
-import { Spectacle } from "./spectacle.js";
 import { byId } from "./dom-like.js";
 import { degFromRad, fix3, intersect } from "./geometry.js";
 import { type Gradient, GRADIENT_DEFAULT } from "./gradient.js";
-import { Arc, Caulk, Neck, type Pathable, Quad, Triangle } from "./pathable.js";
+import { Arc, Neck, type Pathable, Quad, Triangle } from "./pathable.js";
 import { randomId } from "./random-id.js";
-import { RickSVG } from "./svg.js";
+import { Spectacle } from "./spectacle.js";
+import { RickSVG, type SVGElementProxy } from "./svg.js";
 
 export interface InfSpec {
 	gap?: number | undefined;
@@ -13,6 +13,41 @@ export interface InfSpec {
 	mask: number;
 	thickness: number;
 	vScale: number;
+}
+
+interface InfinityStats {
+	cosTheta: number;
+	h: number;
+	inner: number;
+	ix: number | undefined;
+	iy: number | undefined;
+	jx: number;
+	jy: number;
+	p: number;
+	q: number;
+	r: number;
+	riy: number;
+	sinTheta: number;
+	theta: number;
+	thick: number;
+	u: number;
+	v: number;
+	vertical: boolean;
+}
+
+interface MaskStats {
+	m: number;
+	mInner: number;
+	mOuter: number;
+	mask: number;
+	mix: number;
+	miy: number;
+	p: number;
+	theta: number;
+	thick: number;
+	u: number;
+	um: number;
+	vertical: boolean
 }
 
 export class NeuroPrideInf {
@@ -54,7 +89,7 @@ export class NeuroPrideInf {
 		const gTransform = this.#vScale.map((vScale) => {
 			return `translate(${ halfPx * 1.25 } ${ halfPx * 0.75 }) scale(1,${ -vScale })`;
 		});
-		const stats = Spectacle.compose(this.#gap, this.#thickness, (gap1, thickness01) => {
+		const stats: Spectacle<InfinityStats> = Spectacle.compose(this.#gap, this.#thickness, (gap1, thickness01) => {
 			const r = fix3(px / 5);
 			setInfo($infoR, r);
 			let gap = fix3(r * gap1 * thickness01);
@@ -102,7 +137,8 @@ export class NeuroPrideInf {
 			const riy = fix3(Math.sqrt(r * r - p * p));
 			return { cosTheta, h, inner, ix, iy, jx, jy, q, p, r, riy, sinTheta, theta, thick, u, v, vertical };
 		});
-		const maskStats = Spectacle.compose(this.#mask, stats, (mask01, { cosTheta, inner, p, r, sinTheta, theta, thick, u, vertical }) => {
+		const maskStats: Spectacle<MaskStats> = Spectacle.compose(this.#mask, stats, (mask01, statsValues) => {
+			const { cosTheta, inner, p, r, sinTheta, theta, thick, u, vertical } = statsValues;
 			let mask = fix3(Math.min(inner, thick) * mask01);
 			if (mask01 > 0 && mask === 0) {
 				if (inner === 0) {
@@ -174,130 +210,9 @@ export class NeuroPrideInf {
 			gTransform.watch((transform) => {
 				g.transform = transform;
 			}, true);
-			Spectacle.compose(this.#gradient, stats, (gradient, { h, inner, ix, iy, jx, jy, q, p, r, riy, theta, u, v, vertical }) => {
-				for (const child of Array.from(g.$el.childNodes)) {
-					g.$el.removeChild(child);
-				}
-				const front: Pathable[] = [];
-				const back: Pathable[] = [];
-				if (jx < 0) {
-					if (ix != null && iy != null) {
-						// Triangular wedges instead of crossbars.
-						front.push(new Triangle("nwCross", -u, 0, -q, h, ix, iy));
-						back.unshift(new Triangle("seCross", u, 0, q, -h, -ix, -iy));
-					} else {
-						// Vertical — no crossbars.
-					}
-				} else if (inner === 0) {
-					// Big triangular wedges
-					front.push(new Triangle("nwCross", -jx, jy, 0, v, -p, 0, undefined, true));
-					front.push(new Caulk("nwCaulk", -jx, jy, 0, v));
-					back.unshift(new Triangle("seCross", jx, -jy, 0, -v, p, 0, undefined, true));
-					back.unshift(new Caulk("seCaulk", jx, -jy, 0, -v));
-				} else {
-					// Normal rectangles.
-					front.push(new Quad("nwCross", -u, 0, -q, h, -jx, jy, 0, v));
-					front.push(new Caulk("nwCaulk", -q, h, -jx, jy));
-					back.unshift(new Quad("seCross", u, 0, q, -h, jx, -jy, 0, -v));
-					back.unshift(new Caulk("seCaulk", q, -h, jx, -jy));
-				}
-				if (vertical) {
-					// bigCross.d = "";
-					front.push(new Neck("nwNeck", {
-						bi: [ -p + inner, 0 ],
-						bo: [ 0, riy ],
-						ei: [ -p, inner ],
-						eo: [ -p, r ],
-						ri: inner,
-						ro: r,
-						si: [ -p + inner, 0 ],
-						sm: [ -p + inner, 0 ],
-					}));
-					front.push(new Caulk("nwCaulk", -p, inner, -p, r));
-					front.push(new Arc("leftArc", -p, 0, inner, r, 90, 270 + theta));
-					front.push(new Caulk("midCaulk", -p + inner, 0, p - inner, 0));
-					back.unshift(new Neck("seNext", {
-						bi: [ p - inner, 0 ],
-						bo: [ 0, -riy ],
-						ei: [ p, -inner ],
-						eo: [ p, -r ],
-						ri: inner,
-						ro: r,
-						si: [ p - inner, 0 ],
-						sm: [ p - inner, 0 ],
-					}));
-					back.unshift(new Caulk("seCaulk", p, -inner, p, -r));
-					back.unshift(new Arc("rightArc", p, 0, inner, r, 270, 450 + theta, true));
-				} else {
-					if (jx < 0) {
-						front.push(new Neck("nwNeck", {
-							bi: [ jx, jy ],
-							bo: [ 0, riy ],
-							ei: [ -p, inner ],
-							eo: [ -p, r ],
-							ri: inner,
-							ro: r,
-							si: [ -q, h ],
-							sm: [ ix ?? -q, iy ?? h ],
-						}));
-						front.push(new Caulk("nwCaulk", -p, inner, -p, r));
-						front.push(new Arc("leftArc", -p, 0, inner, r, 90, 270 + theta));
-						back.unshift(new Neck("seNeck", {
-							bi: [ -jx, -jy ],
-							bo: [ 0, -riy ],
-							ei: [ p, -inner ],
-							eo: [ p, -r ],
-							ri: inner,
-							ro: r,
-							si: [ q, -h ],
-							sm: [ ix == null ? q : -ix, iy == null ? -h : -iy ],
-						}));
-						back.unshift(new Caulk("seCaulk", p, -inner, p, -r));
-						back.unshift(new Arc("rightArc", p, 0, inner, r, 270, 450 + theta, true));
-					} else {
-						front.push(new Arc("leftArc", -p, 0, inner, r, 90 - theta, 270 + theta));
-						back.unshift(new Arc("rightArc", p, 0, inner, r, 270 - theta, 450 + theta, true));
-					}
-					front.push(new Caulk("swCaulk", -jx, -jy, -q, -h));
-					front.push(new Quad("bigCross", -q, -h, jx, jy, q, h, -jx, -jy));
-					back.unshift(new Caulk("neCaulk", jx, jy, q, h));
-				}
-				const paths = front.concat(back);
-				const totalLength = fix3(paths.reduce((p, c) => p + c.length, 0));
-				let atLength = 0;
-				let goal100 = 0;
-				let lastColor = "transparent";
-				for (const [ color, percent100 ] of gradient) {
-					lastColor = color;
-					goal100 += percent100;
-					const goalLength = fix3((goal100 / 100) * totalLength);
-					while (atLength < goalLength && paths.length > 0) {
-						const path = paths.shift()!;
-						let toRender: Pathable = path;
-						if ((path.length + atLength) > goalLength) {
-							const needLength = fix3(goalLength - atLength);
-							const percent01 = fix3(needLength / path.length);
-							if (percent01 > 0.02) {
-								const subs = path.split(percent01);
-								if (subs != null) {
-									toRender = subs.shift()!;
-									while (subs.length > 0) {
-										paths.unshift(subs.pop()!);
-									}
-								}
-							}
-						}
-						const stroke = toRender.stroke(color);
-						s.path(`<path d="${ toRender.toPath() }" id="path-${ rootId }-${ toRender.name }" fill="${ color }" ${ typeof stroke === "string" ? `stroke="${ stroke }"` : `stroke="${ stroke[ 0 ] }" stroke-width="${ stroke[ 1 ] }"` } />`, g);
-						atLength += toRender.length;
-						if (atLength < goalLength && ((goalLength - atLength) / goalLength) < 0.05) {
-							break; // continue on to next color
-						}
-					}
-				}
-				for (const path of paths) {
-					s.path(`<path d="${ path.toPath() }" id="path-${ rootId }-${ path.name }" fill="${ lastColor }" stroke="none" />`, g);
-				}
+			Spectacle.compose(this.#gradient, stats, (gradient, statsValues) => {
+				const paths = this.generatePaths(g, statsValues);
+				this.renderSplitPaths(paths, gradient, s, rootId, g);
 			});
 		}, undefined, rootId);
 		return svg;
@@ -307,6 +222,143 @@ export class NeuroPrideInf {
 		this.svg?.parentElement?.removeChild(this.svg);
 		const svg = this.asSVG($el);
 		this.svg = svg.svg;
+	}
+
+	private generatePaths(
+		g: SVGElementProxy<SVGGElement>,
+		stats: InfinityStats,
+	): Pathable[] {
+		const { h, inner, ix, iy, jx, jy, q, p, r, riy, theta, u, v, vertical } = stats;
+		for (const child of Array.from(g.$el.childNodes)) {
+			g.$el.removeChild(child);
+		}
+		const front: Pathable[] = [];
+		const back: Pathable[] = [];
+		if (jx < 0) {
+			if (ix != null && iy != null) {
+				// Triangular wedges instead of crossbars.
+				front.push(new Triangle("nwCross", -u, 0, -q, h, ix, iy));
+				back.unshift(new Triangle("seCross", u, 0, q, -h, -ix, -iy));
+			} else {
+				// Vertical — no crossbars.
+			}
+		} else if (inner === 0) {
+			// Big triangular wedges
+			front.push(new Triangle("nwCross", -p, 0, -jx, jy, 0, v));
+			back.unshift(new Triangle("seCross", 0, -v, p, 0, jx, -jy, undefined, true));
+		} else {
+			// Normal rectangles.
+			front.push(new Quad("nwCross", -u, 0, -q, h, -jx, jy, 0, v));
+			back.unshift(new Quad("seCross", u, 0, q, -h, jx, -jy, 0, -v));
+		}
+		if (vertical) {
+			// bigCross.d = "";
+			front.push(new Neck("nwNeck", {
+				bi: [ -p + inner, 0 ],
+				bo: [ 0, riy ],
+				ei: [ -p, inner ],
+				eo: [ -p, r ],
+				ri: inner,
+				ro: r,
+				si: [ -p + inner, 0 ],
+				sm: [ -p + inner, 0 ],
+			}));
+			front.push(new Arc("leftArc", -p, 0, inner, r, 90, 270 + theta));
+			back.unshift(new Neck("seNext", {
+				bi: [ p - inner, 0 ],
+				bo: [ 0, -riy ],
+				ei: [ p, -inner ],
+				eo: [ p, -r ],
+				ri: inner,
+				ro: r,
+				si: [ p - inner, 0 ],
+				sm: [ p - inner, 0 ],
+			}));
+			back.unshift(new Arc("rightArc", p, 0, inner, r, 270, 450 + theta, true));
+		} else {
+			if (jx < 0) {
+				front.push(new Neck("nwNeck", {
+					bi: [ jx, jy ],
+					bo: [ 0, riy ],
+					ei: [ -p, inner ],
+					eo: [ -p, r ],
+					ri: inner,
+					ro: r,
+					si: [ -q, h ],
+					sm: [ ix ?? -q, iy ?? h ],
+				}));
+				// front.push(new Caulk("nwCaulk", -p, inner, -p, r));
+				front.push(new Arc("leftArc", -p, 0, inner, r, 90, 270 + theta));
+				back.unshift(new Neck("seNeck", {
+					bi: [ -jx, -jy ],
+					bo: [ 0, -riy ],
+					ei: [ p, -inner ],
+					eo: [ p, -r ],
+					ri: inner,
+					ro: r,
+					si: [ q, -h ],
+					sm: [ ix == null ? q : -ix, iy == null ? -h : -iy ],
+				}));
+				// back.unshift(new Caulk("seCaulk", p, -inner, p, -r));
+				back.unshift(new Arc("rightArc", p, 0, inner, r, 270, 450 + theta, true));
+			} else {
+				front.push(new Arc("leftArc", -p, 0, inner, r, 90 - theta, 270 + theta));
+				back.unshift(new Arc("rightArc", p, 0, inner, r, 270 - theta, 450 + theta, true));
+			}
+			// front.push(new Caulk("swCaulk", -jx, -jy, -q, -h));
+			front.push(new Quad("bigCross", -q, -h, jx, jy, q, h, -jx, -jy));
+			// back.unshift(new Caulk("neCaulk", jx, jy, q, h));
+		}
+		return front.concat(back);
+	}
+
+	private renderSplitPaths(
+		paths: Pathable[],
+		gradient: Readonly<Gradient>,
+		svg: RickSVG,
+		rootId: string,
+		g: SVGElementProxy<SVGGElement>,
+	): void {
+		const totalLength = fix3(paths.reduce((p, c) => p + c.length, 0));
+		let atLength = 0;
+		let goal100 = 0;
+		let lastColor = "transparent";
+		let colorsRemain = gradient.length;
+		for (const [ color, percent100 ] of gradient) {
+			colorsRemain--;
+			lastColor = color;
+			goal100 += percent100;
+			const goalLength = fix3((goal100 / 100) * totalLength);
+			while (atLength < goalLength && paths.length > 0) {
+				const path = paths.shift()!;
+				let toRender: Pathable = path;
+				if ((path.length + atLength) > goalLength) {
+					const needLength = fix3(goalLength - atLength);
+					const percent01 = fix3(needLength / path.length);
+					if (percent01 > 0.02) {
+						const subs = path.split(percent01);
+						if (subs != null) {
+							toRender = subs.shift()!;
+							while (subs.length > 0) {
+								paths.unshift(subs.pop()!);
+							}
+						}
+					}
+				}
+				const stroke = toRender.stroke(color);
+				svg.path(`<path d="${ toRender.toPath() }" id="path-${ rootId }-${ toRender.name }" fill="${ color }" ${ typeof stroke === "string" ? `stroke="${ stroke }"` : `stroke="${ stroke[ 0 ] }" stroke-width="${ stroke[ 1 ] }"` } />`, g);
+				console.log(toRender);
+				atLength += toRender.length;
+				if (atLength < goalLength && ((goalLength - atLength) / goalLength) < 0.05) {
+					if (colorsRemain > 0 || paths.length === 0) {
+						break; // continue on to next color
+					}
+				}
+			}
+		}
+		for (const path of paths) {
+			svg.path(`<path d="${ path.toPath() }" id="path-${ rootId }-${ path.name }" fill="${ lastColor }" stroke="none" />`, g);
+		}
 	}
 
 	public setGap(gap: number): void {
