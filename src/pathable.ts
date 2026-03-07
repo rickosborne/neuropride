@@ -121,6 +121,9 @@ export class Quad extends Triangle {
 }
 
 export class Arc extends PathableBase {
+	public readonly big: boolean;
+	public readonly endDeg: number;
+
 	constructor(
 		name: string,
 		public readonly cx: number,
@@ -128,48 +131,57 @@ export class Arc extends PathableBase {
 		public readonly ri: number,
 		public readonly ro: number,
 		public readonly startDeg: number,
-		public readonly endDeg: number,
+		public readonly degChange: number,
 		invert: boolean = false,
 	) {
 		const rm = (ri + ro) / 2;
 		const circ = Math.PI * rm * 2;
-		const dd = Math.abs(endDeg - startDeg);
-		super(name, fix3(circ * (dd / 360)), invert);
+		const portion = Math.abs(degChange) / 360;
+		super(name, fix3(circ * portion), invert);
+		this.endDeg = startDeg + degChange;
+		this.big = portion > 0.5;
 	}
 
 	public override split(percent01: number): Pathable[] {
-		const { cx, cy, invertPath, ri, ro, startDeg, endDeg } = this;
-		const p01 = invertPath ? (1 - percent01) : percent01;
-		const midDeg = fix3((endDeg - startDeg) * p01 + startDeg);
-		const a = new Arc(`${ this.name }-a`, cx, cy, ri, ro, startDeg, midDeg, invertPath);
-		const b = new Arc(`${ this.name }-b`, cx, cy, ri, ro, midDeg, endDeg, invertPath);
-		return invertPath ? [ b, a ] : [ a, b ];
+		const { cx, cy, degChange, invertPath, ri, ro, startDeg, endDeg } = this;
+		const dd = fix3(degChange * percent01);
+		const rd = fix3(degChange - dd);
+		const midDeg = fix3(startDeg + dd);
+		const a = new Arc(`${ this.name }-a`, cx, cy, ri, ro, startDeg, dd, invertPath);
+		const b = new Arc(`${ this.name }-b`, cx, cy, ri, ro, midDeg, rd, invertPath);
+		console.log({ startDeg, endDeg, percent01, a, b });
+		return [ a, b ];
 	}
 
 	public override toPath(): string {
-		const { cx, cy, ri, ro, startDeg, endDeg } = this;
-		const degChange = Math.abs(endDeg - startDeg);
-		const { inner: [ six, siy ], outer: [ sox, soy ] } = this.pointsAtDeg(startDeg - fudge, cx, cy, ri, ro);
-		const { inner: [ eix, eiy ], outer: [ eox, eoy ] } = this.pointsAtDeg(endDeg + fudge, cx, cy, ri, ro);
-		const { inner: [ mix, miy ], outer: [ mox, moy ] } = this.pointsAtDeg((startDeg + endDeg) / 2, cx, cy, ri, ro);
-		const end = `A ${ ro },${ ro } 0 0 0 ${ sox },${ soy }`;
-		if (ri === 0) {
-			const start = `M ${ cx },${ cy } L ${ eox },${ eoy }`;
-			if (degChange >= 180) {
-				return `${ start } A ${ ro },${ ro } 0 0 0 ${ mox },${ moy } ${ end } z`;
-			} else {
-				return `${ start } ${ end } z`;
-			}
-		}
-		let arcIn: string, arcOut: string;
-		if (degChange >= 180) {
-			arcIn = `A ${ ri },${ ri } 0 0 1 ${ mix },${ miy }`;
-			arcOut = `A ${ ro },${ ro } 0 0 0 ${ mox },${ moy }`;
+		const { big, cx, cy, invertPath, ri, ro, startDeg, endDeg } = this;
+		const f = this.invertPath ? -fudge : fudge;
+		const { inner: [ six, siy ], outer: [ sox, soy ] } = this.pointsAtDeg(startDeg - f, cx, cy, ri, ro);
+		const { inner: [ eix, eiy ], outer: [ eox, eoy ] } = this.pointsAtDeg(endDeg + f, cx, cy, ri, ro);
+		let lox: number, loy: number, lix: number, liy: number, rox: number, roy: number, rix: number, riy: number;
+		if (invertPath) {
+			lox = eox;
+			loy = eoy;
+			lix = eix;
+			liy = eiy;
+			rox = sox;
+			roy = soy;
+			rix = six;
+			riy = siy;
 		} else {
-			arcIn = "";
-			arcOut = "";
+			lox = sox;
+			loy = soy;
+			lix = six;
+			liy = siy;
+			rox = eox;
+			roy = eoy;
+			rix = eix;
+			riy = eiy;
 		}
-		return `M ${ six },${ siy } ${ arcIn } A ${ ri },${ ri } 0 0 1 ${ eix },${ eiy } L ${ eox },${ eoy } ${ arcOut } ${ end } z`;
+		if (ri === 0) {
+			return `M ${ cx },${ cy } L ${ lox },${ loy } A ${ ro },${ ro } 0 ${ big ? 1 : 0 } 1 ${ rox },${ roy } z`;
+		}
+		return `M ${ lox },${ loy } A ${ ro },${ ro } 0 ${ big ? 1 : 0 } 1 ${ rox },${ roy } L ${ rix },${ riy } A ${ ri },${ ri } 0 ${ big ? 1 : 0 } 0 ${ lix },${ liy } z`;
 	}
 }
 

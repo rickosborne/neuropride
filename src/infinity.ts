@@ -263,7 +263,7 @@ export class NeuroPrideInf {
 				si: [ -p + inner, 0 ],
 				sm: [ -p + inner, 0 ],
 			}));
-			front.push(new Arc("leftArc", -p, 0, inner, r, 90, 270 + theta));
+			front.push(new Arc("leftArc", -p, 0, inner, r, 90, 180 + theta));
 			back.unshift(new Neck("seNext", {
 				bi: [ p - inner, 0 ],
 				bo: [ 0, -riy ],
@@ -274,7 +274,7 @@ export class NeuroPrideInf {
 				si: [ p - inner, 0 ],
 				sm: [ p - inner, 0 ],
 			}));
-			back.unshift(new Arc("rightArc", p, 0, inner, r, 270, 450 + theta, true));
+			back.unshift(new Arc("rightArc", p, 0, inner, r, 90 + theta, -180 - theta, true));
 		} else {
 			if (jx < 0) {
 				front.push(new Neck("nwNeck", {
@@ -287,8 +287,7 @@ export class NeuroPrideInf {
 					si: [ -q, h ],
 					sm: [ ix ?? -q, iy ?? h ],
 				}));
-				// front.push(new Caulk("nwCaulk", -p, inner, -p, r));
-				front.push(new Arc("leftArc", -p, 0, inner, r, 90, 270 + theta));
+				front.push(new Arc("leftArc", -p, 0, inner, r, 90, 180 + theta));
 				back.unshift(new Neck("seNeck", {
 					bi: [ -jx, -jy ],
 					bo: [ 0, -riy ],
@@ -299,11 +298,10 @@ export class NeuroPrideInf {
 					si: [ q, -h ],
 					sm: [ ix == null ? q : -ix, iy == null ? -h : -iy ],
 				}));
-				// back.unshift(new Caulk("seCaulk", p, -inner, p, -r));
-				back.unshift(new Arc("rightArc", p, 0, inner, r, 270, 450 + theta, true));
+				back.unshift(new Arc("rightArc", p, 0, inner, r, 90 + theta, -180 - theta, true));
 			} else {
-				front.push(new Arc("leftArc", -p, 0, inner, r, 90 - theta, 270 + theta));
-				back.unshift(new Arc("rightArc", p, 0, inner, r, 270 - theta, 450 + theta, true));
+				front.push(new Arc("leftArc", -p, 0, inner, r, 90 - theta, 180 + (2 * theta)));
+				back.unshift(new Arc("rightArc", p, 0, inner, r, 90 + theta, -180 - (2 * theta), true));
 			}
 			// front.push(new Caulk("swCaulk", -jx, -jy, -q, -h));
 			front.push(new Quad("bigCross", -q, -h, jx, jy, q, h, -jx, -jy));
@@ -347,7 +345,6 @@ export class NeuroPrideInf {
 				}
 				const stroke = toRender.stroke(color);
 				svg.path(`<path d="${ toRender.toPath() }" id="path-${ rootId }-${ toRender.name }" fill="${ color }" ${ typeof stroke === "string" ? `stroke="${ stroke }"` : `stroke="${ stroke[ 0 ] }" stroke-width="${ stroke[ 1 ] }"` } />`, g);
-				console.log(toRender);
 				atLength += toRender.length;
 				if (atLength < goalLength && ((goalLength - atLength) / goalLength) < 0.05) {
 					if (colorsRemain > 0 || paths.length === 0) {
