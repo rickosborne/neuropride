@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>neuropride builder by Rick O</title>
+	<meta content="2026-03-02" name="DC.date">
+	<meta content="Rick Osborne" name="DC.creator">
+	<meta content="Application" name="DC.type">
+	<meta content="text/html" name="DC.format">
+	<meta content="https://creativecommons.org/licenses/by-nc-sa/4.0/" name="DC.license">
+	<meta content="neuropride at rickosborne.org" property="og:site_name">
+	<meta content="article" property="og:type">
+	<meta content="1920" property="og:image:width">
+	<meta content="1080" property="og:image:height">
+	<meta content="summary_large_image" name="twitter:card">
+	<meta content="A large graphic of an infinity done in pride flag colors sits in a workspace not unlike a photo editing application." property="og:image:alt">
+	<meta content="../img/neuropride-builder-1920x1080.png" name="twitter:image">
+	<meta content="../img/neuropride-builder-1920x1080.png" property="og:image">
+	<meta content="neuropride builder by Rick O" name="twitter:title">
+	<meta content="neuropride builder by Rick O" name="DC.title">
+	<meta content="neuropride builder by Rick O" property="og:title">
+	<meta content="A simple sandbox app for testing out infinity drawing parameters and calculations." name="DC.description">
+	<meta content="A simple sandbox app for testing out infinity drawing parameters and calculations." property="og:description">
+	<meta content="A simple sandbox app for testing out infinity drawing parameters and calculations." name="twitter:description">
+	<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
+	<link href="../img/np-tism-heart.png" rel="shortcut icon">
+	<link href="../css/build.css" rel="stylesheet">
+	<link href="https://rickosborne.org/neuropride/build.html" rel="canonical">
+	<script defer src="../src/build.ts"></script>
+</head>
+<body id="body">
+<nav id="nav">
+	<header id="title-bar">
+		<h1>neuropride builder</h1>
+		<p class="by fill-c">by <a href="https://rickosborne.org">Rick O</a></p>
+		<p class="by ta-r"><a href="https://rickosborne.org/neuropride/">about neuropride</a></p>
+	</header>
+</nav>
+<div id="main-h">
+	<section class="panels" id="panels">
+		<details class="panel" open>
+			<summary>shape</summary>
+			<form>
+				<table class="full-w">
+					<tr>
+						<td><label for="gap-r">gap</label></td>
+						<td><input id="gap-r" max="1" min="-1" step="0.05" type="range" value="0"></td>
+					</tr>
+					<tr>
+						<td><label for="thick-r">thick</label></td>
+						<td><input id="thick-r" max="1" min="0" step="0.05" type="range" value="0.5"></td>
+					</tr>
+					<tr>
+						<td><label for="v-scale-r">stretch</label></td>
+						<td><input id="v-scale-r" max="2" min="0.1" step="0.1" type="range" value="1"></td>
+					</tr>
+					<tr>
+						<td><label for="mask-r">mask</label></td>
+						<td><input id="mask-r" max="1" min="0" step="0.1" type="range" value="0.5"></td>
+					</tr>
+				</table>
+			</form>
+		</details>
+		<details class="panel long" open>
+			<summary>colors</summary>
+			<form>
+				<table class="full-w" id="color-options"></table>
+			</form>
+		</details>
+		<details class="panel" id="info-panel">
+			<summary>info</summary>
+			<form>
+				<table class="full-w">
+					<tr>
+						<td>r</td>
+						<td class="ta-r" id="info-r"></td>
+					</tr>
+					<tr>
+						<td>gap</td>
+						<td class="ta-r" id="info-gap"></td>
+					</tr>
+					<tr>
+						<td>p</td>
+						<td class="ta-r" id="info-p"></td>
+					</tr>
+					<tr>
+						<td>inner</td>
+						<td class="ta-r" id="info-inner"></td>
+					</tr>
+					<tr>
+						<td>thick</td>
+						<td class="ta-r" id="info-thick"></td>
+					</tr>
+					<tr>
+						<td>angle</td>
+						<td class="ta-r" id="info-angle"></td>
+					</tr>
+					<tr>
+						<td>mask</td>
+						<td class="ta-r" id="info-mask"></td>
+					</tr>
+					<tr>
+						<td>jx</td>
+						<td class="ta-r" id="info-jx"></td>
+					</tr>
+				</table>
+			</form>
+		</details>
+	</section>
+	<main id="content">
+		<figure class="checkerboard" id="big-inf"></figure>
+	</main>
+</div>
+<template id="tpl-layout-option">
+	<tr>
+		<td class="min-w">
+			<input data-attrs="value=name id=id" id="fake-layout-option" name="layout" type="radio">
+		</td>
+		<td class="max-w">
+			<label data-attrs="for=id" for="fake-layout-option">
+				<span data-text="name"></span>
+			</label>
+		</td>
+		<td class="min-w ta-r">
+			<span data-text="slots"></span>
+		</td>
+	</tr>
+</template>
+<template id="tpl-color-option">
+	<tr>
+		<td class="min-w">
+			<input data-attrs="value=name id=id" id="fake-color-option" name="color" type="radio">
+		</td>
+		<td class="max-w">
+			<label data-attrs="for=id" for="fake-color-option">
+				<span data-text="name"></span>
+			</label>
+		</td>
+	</tr>
+</template>
+</body>
+</html>

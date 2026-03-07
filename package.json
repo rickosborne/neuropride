@@ -1,0 +1,32 @@
+{
+	"author": {
+		"name": "Rick Osborne",
+		"url": "https://rickosborne.org"
+	},
+	"dependencies": {
+
+	},
+	"description": "",
+	"devDependencies": {
+		"@chialab/esbuild-plugin-html": "0.19.1",
+		"@types/node": "25.3.5",
+		"esbuild": "0.27.3",
+		"rimraf": "6.1.3",
+		"tsx": "4.21.0",
+		"typescript": "5.9.3",
+		"zod": "4.3.6"
+	},
+	"name": "neuropride",
+	"private": true,
+	"repository": {
+		"type": "git",
+		"url": "git@github.com:rickosborne/neuropride.git"
+	},
+	"scripts": {
+		"build": "npm run clean && tsx scripts/build-html.ts",
+		"clean": "rimraf ./dist",
+		"type-check": "tsc --noEmit"
+	},
+	"type": "module",
+	"version": "1.0.0"
+}
