@@ -195,7 +195,7 @@ export class Arc extends PathableBase {
 			fromDeg = (90 + startDeg) % 360;
 		}
 		const maskId = `${ name }-mask-${ rootId }`;
-		svg.el(`<mask id="${ maskId }"><path d="${ this.toPath() }" fill="white" stroke="none" /></mask>`, SVGMaskElement, svg.defs);
+		svg.el(`<clipPath id="${ maskId }"><path d="${ this.toPath() }" fill="white" stroke="none" /></clipPath>`, SVGClipPathElement, svg.defs);
 		const scale = Math.abs(degChange / 360);
 		const stops = colors.flatMap(([ color, start, end ]) => [
 			`${ color } ${ fix3(Math.abs(start * scale)) }%`,
@@ -207,14 +207,22 @@ export class Arc extends PathableBase {
 			height: "100%",
 			width: "100%",
 		});
-		svg.el(`<foreignObject width="${ svg.width }" height="${ svg.height }" x="-${ svg.width / 2 }" y="-${ svg.height / 2 }" mask="url(#${ maskId })"><div style="${ divStyle }" /></foreignObject>`, SVGForeignObjectElement, g);
+		svg.el(`<foreignObject width="${ svg.width }" height="${ svg.height }" x="-${ svg.width / 2 }" y="-${ svg.height / 2 }" clip-path="url(#${ maskId })"><div style="${ divStyle }" /></foreignObject>`, SVGForeignObjectElement, g);
 	}
 
-	public override toPath(): string {
+	public override toPath(offset: PointXY = [0,0]): string {
 		const { big, cx, cy, invertPath, ri, ro, startDeg, endDeg } = this;
 		const f = this.invertPath ? -fudge : fudge;
-		const { inner: [ six, siy ], outer: [ sox, soy ] } = this.pointsAtDeg(startDeg - f, cx, cy, ri, ro);
-		const { inner: [ eix, eiy ], outer: [ eox, eoy ] } = this.pointsAtDeg(endDeg + f, cx, cy, ri, ro);
+		let { inner: [ six, siy ], outer: [ sox, soy ] } = this.pointsAtDeg(startDeg - f, cx, cy, ri, ro);
+		let { inner: [ eix, eiy ], outer: [ eox, eoy ] } = this.pointsAtDeg(endDeg + f, cx, cy, ri, ro);
+		six += offset[0];
+		siy += offset[1];
+		sox += offset[0];
+		soy += offset[1];
+		eix += offset[0];
+		eiy += offset[1];
+		eox += offset[0];
+		eoy += offset[1];
 		let lox: number, loy: number, lix: number, liy: number, rox: number, roy: number, rix: number, riy: number;
 		if (invertPath) {
 			lox = eox;

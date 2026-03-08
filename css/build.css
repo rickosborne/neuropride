@@ -291,6 +291,10 @@ form, input[type=range] {
 	touch-action: manipulation;
 }
 
+form td {
+	vertical-align: top;
+}
+
 /* ================================================== */
 :root {
 	--ca: hsl(64 80% 40%);
@@ -347,7 +351,7 @@ form, input[type=range] {
 	}
 
 	.panel {
-		max-width: 50vw;
+		max-width: 33vw;
 	}
 
 	.panel.long form {

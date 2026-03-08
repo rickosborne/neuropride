@@ -10,8 +10,22 @@ const maybeFloat = (value?: string | undefined): number | undefined => {
 	return undefined;
 };
 
+const radioSetter = ($parent: HTMLElement, setter: (value: string | undefined) => void) => {
+	let alreadyChecked: HTMLInputElement | undefined;
+	for (const radio of Array.from($parent.querySelectorAll("input[type=radio]") as NodeListOf<HTMLInputElement>)) {
+		if (radio.checked) {
+			alreadyChecked = radio;
+		}
+		radio.addEventListener("change", () => setter(radio.value));
+	}
+	if (alreadyChecked != null) {
+		setter(alreadyChecked.value);
+	}
+};
+
 document.addEventListener("DOMContentLoaded", () => {
 	const $colorOptions = byId("color-options", HTMLElement);
+	const $drawStrategyOptions = byId("draw-strategy-options", HTMLElement);
 	const $bigInf = byId("big-inf", HTMLElement);
 	const $tplColorOption = byId("tpl-color-option", HTMLTemplateElement);
 	const $gapR = byId("gap-r", HTMLInputElement);
@@ -33,24 +47,22 @@ document.addEventListener("DOMContentLoaded", () => {
 			const params = { ...noGradient, id: `palette-${ palette.name.replace(/[^a-zA-Z0-9]+/g, "") }` };
 			hydrate(params);
 		});
-		let alreadyChecked: HTMLInputElement | undefined;
-		const setColor = (name?: string | undefined) => {
+		radioSetter($colorOptions, (name: string | undefined) => {
 			if (name != null) {
 				const palette = PALETTES.find((p) => p.name === name);
 				if (palette != null) {
 					bigInf.setGradient(palette.gradient);
 				}
 			}
-		};
-		for (const radio of Array.from($colorOptions.querySelectorAll("input[type=radio]") as NodeListOf<HTMLInputElement>)) {
-			if (radio.checked) {
-				alreadyChecked = radio;
+		});
+	}
+
+	if ($drawStrategyOptions != null) {
+		radioSetter($drawStrategyOptions, (value) => {
+			if (value != null) {
+				bigInf.setDrawStrategy(value);
 			}
-			radio.addEventListener("change", () => setColor(radio.value));
-		}
-		if (alreadyChecked != null) {
-			setColor(alreadyChecked.value);
-		}
+		})
 	}
 
 	(() => {

@@ -67,6 +67,21 @@
 				<table class="full-w" id="color-options"></table>
 			</form>
 		</details>
+		<details class="panel" id="draw-strategy-panel" open>
+			<summary>painting strategy</summary>
+			<form>
+				<table class="full-w" id="draw-strategy-options">
+					<tr>
+						<td><input type="radio" name="draw-strategy" value="split" id="draw-strategy-split"></td>
+						<td><label for="draw-strategy-split" title="shape paths are split at color boundaries.  shapes are less regular and less balanced, but easy to paint.">split paths</label></td>
+					</tr>
+					<tr>
+						<td><input type="radio" name="draw-strategy" value="filled" id="draw-strategy-filled"></td>
+						<td><label for="draw-strategy-filled" title="shapes are kept intact and filled with CSS and SVG gradients.  fewer drawing artifacts, but harder to edit later.">filled gradients</label></td>
+					</tr>
+				</table>
+			</form>
+		</details>
 		<details class="panel" id="info-panel">
 			<summary>info</summary>
 			<form>

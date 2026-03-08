@@ -7,6 +7,7 @@ import { Spectacle } from "./spectacle.js";
 import { RickSVG, type SVGElementProxy } from "./svg.js";
 
 export interface InfSpec {
+	drawStrategy?: string | undefined;
 	gap?: number | undefined;
 	gradient?: Gradient | undefined;
 	inner: number;
@@ -51,6 +52,7 @@ interface MaskStats {
 }
 
 export class NeuroPrideInf {
+	readonly #drawStrategy: Spectacle<string>;
 	readonly #gap: Spectacle<number>;
 	readonly #gradient: Spectacle<Readonly<Gradient>>;
 	readonly #mask: Spectacle<number>;
@@ -60,6 +62,7 @@ export class NeuroPrideInf {
 	private svg: SVGElement | undefined;
 
 	public constructor(init: Partial<InfSpec> = {}) {
+		this.#drawStrategy = Spectacle.of(init.drawStrategy ?? "filled");
 		this.#gap = Spectacle.of(Math.max(-1, Math.min(1, init.gap ?? 0)));
 		this.#mask = Spectacle.of(Math.max(0, Math.min(1, init.mask ?? 0)));
 		this.#thickness = Spectacle.of(init.thickness ?? 1);
@@ -210,7 +213,7 @@ export class NeuroPrideInf {
 			gTransform.watch((transform) => {
 				g.transform = transform;
 			}, true);
-			Spectacle.compose(this.#gradient, stats, (gradient, statsValues) => {
+			Spectacle.compose(this.#gradient, stats, this.#drawStrategy, (gradient, statsValues, drawStrategy) => {
 				for (const child of Array.from(g.$el.childNodes)) {
 					g.$el.removeChild(child);
 				}
@@ -218,8 +221,11 @@ export class NeuroPrideInf {
 					svg.defs.removeChild(child);
 				}
 				const paths = this.generatePaths(statsValues);
-				this.renderSplitGradients(paths, gradient, s, rootId, g);
-				// this.renderSplitPaths(paths, gradient, s, rootId, g);
+				if (drawStrategy === "split") {
+					this.renderSplitPaths(paths, gradient, s, rootId, g);
+				} else {
+					this.renderSplitGradients(paths, gradient, s, rootId, g);
+				}
 			});
 		}, undefined, rootId);
 		return svg;
@@ -247,8 +253,8 @@ export class NeuroPrideInf {
 			}
 		} else if (inner === 0) {
 			// Big triangular wedges
-			front.push(new Triangle("nwCross", -p, 0, -jx, jy, 0, v));
-			back.unshift(new Triangle("seCross", 0, -v, p, 0, jx, -jy, undefined, true));
+			front.push(new Triangle("nwCross", -jx, jy, 0, v, -p, 0));
+			back.unshift(new Triangle("seCross", jx, -jy, 0, -v, p, 0, undefined, true));
 		} else {
 			// Normal rectangles.
 			front.push(new Quad("nwCross", -u, 0, -q, h, -jx, jy, 0, v));
@@ -343,8 +349,6 @@ export class NeuroPrideInf {
 		}
 	}
 
-	// @ts-expect-error Not used at the moment
-	// noinspection JSUnusedLocalSymbols
 	private renderSplitPaths(
 		paths: Pathable[],
 		gradient: Readonly<Gradient>,
@@ -391,6 +395,10 @@ export class NeuroPrideInf {
 		for (const path of paths) {
 			svg.path(`<path d="${ path.toPath() }" id="path-${ rootId }-${ path.name }" fill="${ lastColor }" stroke="none" />`, g);
 		}
+	}
+
+	public setDrawStrategy(strategy: string): void {
+		this.#drawStrategy.update(strategy);
 	}
 
 	public setGap(gap: number): void {
