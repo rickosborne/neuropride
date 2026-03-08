@@ -1,3 +1,5 @@
+import { fix3, type PointXY } from "./geometry.js";
+import type { MeasuredGradientSegment } from "./gradient.js";
 import { randomId } from "./random-id.js";
 
 export type SVGElementFn<E extends SVGElement> = (new () => E) & { prototype: E };
@@ -34,6 +36,8 @@ export interface SVGRectProxy extends SVGElementProxy<SVGRectElement> {
 export class RickSVG {
 	readonly #scratch: SVGGElement;
 	readonly svg: SVGGElement;
+	public readonly defs: SVGDefsElement;
+	#nextId: number = 1;
 
 	constructor(
 		public readonly parent: HTMLElement,
@@ -41,18 +45,20 @@ export class RickSVG {
 		public readonly height: number,
 		public readonly id = randomId("svg"),
 	) {
-		parent.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${ width } ${ height }" id="${ id }"><g class="scratch"></g></svg>`;
+		parent.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${ width } ${ height }" id="${ id }"><defs></defs><g class="scratch"></g></svg>`;
 		this.svg = parent.querySelector(`#${ id }`)!;
-		this.#scratch = Array.from(parent.querySelectorAll(".scratch") as NodeListOf<SVGGElement>)[ 0 ]!;
+		this.#scratch = Array.from(this.svg.querySelectorAll(".scratch") as NodeListOf<SVGGElement>)[ 0 ]!;
+		this.defs = Array.from(this.svg.querySelectorAll("defs"))[0]!;
+		console.log(this.defs);
 	}
 
 	public circle(html: `<circle${ string }/>`, parent?: SVGElement | SVGElementProxy): SVGCircleProxy {
 		return this.el(html, SVGCircleElement, parent);
 	}
 
-	public el<E extends SVGElement, P extends SVGElementProxy<E>>(html: `<${ string }/>`, type: SVGElementFn<E>, parent?: SVGElement | SVGElementProxy): P
+	public el<E extends SVGElement, P extends SVGElementProxy<E>>(html: `<${ string }>`, type: SVGElementFn<E>, parent?: SVGElement | SVGElementProxy): P
 	public el(html: `<${ string }/>`): SVGElementProxy;
-	public el<E extends SVGElement, P extends SVGElementProxy<E>>(html: `<${ string }/>`, type?: SVGElementFn<E>, parent?: SVGElement | SVGElementProxy): P {
+	public el<E extends SVGElement, P extends SVGElementProxy<E>>(html: `<${ string }>`, type?: SVGElementFn<E>, parent?: SVGElement | SVGElementProxy): P {
 		this.#scratch.innerHTML = html;
 		const $el = this.#scratch.firstElementChild;
 		if (!($el instanceof (type ?? SVGElement))) {
@@ -77,17 +83,39 @@ export class RickSVG {
 		return g;
 	}
 
-	path(html: `<path${ string }/>`, parent?: SVGElement | SVGElementProxy): SVGPathProxy {
+	public linearGradient(
+		gradient: MeasuredGradientSegment[],
+		[x1, y1]: PointXY,
+		[x2, y2]: PointXY,
+	): SVGElementProxy<SVGLinearGradientElement> {
+		const gid = `${this.id}-lg-${this.#nextId++}`;
+		const stops: string[] = [];
+		for (const [color, start, end] of gradient) {
+			stops.push(`<stop offset="${fix3(start)}%" stop-color="${color}" />`);
+			stops.push(`<stop offset="${fix3(end)}%" stop-color="${color}" />`);
+		}
+		return this.el(`<linearGradient id="${gid}" x1="${fix3(x1)}" y1="${fix3(y1)}" x2="${fix3(x2)}" y2="${fix3(y2)}" gradientUnits="userSpaceOnUse">${stops.join("")}</linearGradient>`, SVGLinearGradientElement, this.defs);
+	}
+
+	public path(html: `<path${ string }/>`, parent?: SVGElement | SVGElementProxy): SVGPathProxy {
 		return this.el(html, SVGPathElement, parent);
 	}
 
-	rect(html: `<rect${ string }/>`, parent?: SVGElement | SVGElementProxy): SVGRectProxy {
+	public rect(html: `<rect${ string }/>`, parent?: SVGElement | SVGElementProxy): SVGRectProxy {
 		return this.el(html, SVGRectElement, parent);
 	}
 }
 
 const svgProxy = <E extends SVGElement>($el: SVGElement): SVGElementProxy<E> => {
 	return new Proxy({ $el } as SVGElementProxy<E>, {
+		get(target, key) {
+			if (key === "$el") {
+				return target.$el;
+			} else if (typeof  key === "string") {
+				return $el[key as keyof SVGElement];
+			}
+			return undefined;
+		},
 		set(target, key, newValue) {
 			if (typeof key !== "string") {
 				console.error("Unexpected symbol");

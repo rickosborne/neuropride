@@ -20,3 +20,10 @@ export function byId<E extends HTMLElement>(id: string, elType?: HTMLElementFn<E
 	}
 	return undefined;
 }
+
+export const formatStyle = (style: Record<string, string | number>): string => {
+	return Object.entries(style)
+		.sort(([a], [b]) => a.localeCompare(b))
+		.map(([k, v]) => `${k}: ${v}`)
+		.join("; ");
+};

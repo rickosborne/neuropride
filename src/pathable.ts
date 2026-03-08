@@ -1,4 +1,7 @@
+import { formatStyle } from "./dom-like.js";
 import { fix3, type PointXY, radFromDeg } from "./geometry.js";
+import type { MeasuredGradientSegment } from "./gradient.js";
+import { type RickSVG, type SVGElementProxy } from "./svg.js";
 
 type StrokeDetails = string | [ stroke: string, strokeWidth: number ];
 
@@ -14,6 +17,8 @@ export interface Pathable {
 	split(percent01: number): Pathable[] | undefined;
 
 	stroke(color: string): StrokeDetails;
+
+	toFilledPath(colors: MeasuredGradientSegment[], rootId: string, svg: RickSVG, g: SVGElementProxy<SVGGElement>): void;
 
 	toPath(): string;
 }
@@ -58,8 +63,13 @@ abstract class PathableBase implements Pathable {
 		return "none";
 	}
 
+	public toFilledPath(colors: MeasuredGradientSegment[], rootId: string, svg: RickSVG, g: SVGElementProxy<SVGGElement>): void {
+		const color = colors[ 0 ]?.[ 0 ] ?? "white";
+		svg.path(`<path d="${ this.toPath() }" id="path-${ rootId }-${ this.name }" fill="${ color }" stroke="none" />`, g);
+	}
+
 	public toPath(): string {
-		throw new Error(`Not implemented: ${ this.constructor.name }`);
+		throw new Error(`Not implemented: ${ this.constructor.name }.toPath`);
 	}
 }
 
@@ -76,6 +86,18 @@ export class Triangle extends PathableBase {
 		invertPath: boolean = false,
 	) {
 		super(name, length, invertPath);
+	}
+
+	public override toFilledPath(colors: MeasuredGradientSegment[], rootId: string, svg: RickSVG, g: SVGElementProxy<SVGGElement>): void {
+		let color: string;
+		if (colors.length > 1) {
+			const { x1, y1, x2, y2 } = this;
+			const gid = svg.linearGradient(colors, [ x1, y1 ], [ x2, y2 ]).id;
+			color = `url(#${ gid })`;
+		} else {
+			color = colors[ 0 ]?.[ 0 ] ?? "transparent";
+		}
+		super.toFilledPath([ [ color, 0, 0 ] ], rootId, svg, g);
 	}
 
 	public override toPath(): string {
@@ -151,6 +173,41 @@ export class Arc extends PathableBase {
 		const b = new Arc(`${ this.name }-b`, cx, cy, ri, ro, midDeg, rd, invertPath);
 		console.log({ startDeg, endDeg, percent01, a, b });
 		return [ a, b ];
+	}
+
+	public override toFilledPath(grad: MeasuredGradientSegment[], rootId: string, svg: RickSVG, g: SVGElementProxy<SVGGElement>): void {
+		if (grad.length === 1) {
+			super.toFilledPath(grad, rootId, svg, g);
+			return;
+		}
+		const { cx, cy, degChange, endDeg, invertPath, name, startDeg } = this;
+		let colors: MeasuredGradientSegment[] = grad;
+		let fromDeg: number;
+		if (invertPath) {
+			// These can only be defined in clockwise order, so we need to reverse them.
+			colors = colors.map((_mgs, i, g) => {
+				const [ c, s, e ] = g[ g.length - i - 1 ]!;
+				return [ c, fix3(100 - e), fix3(100 - s) ];
+			});
+			fromDeg = (90 + endDeg) % 360;
+		} else {
+			colors = grad;
+			fromDeg = (90 + startDeg) % 360;
+		}
+		const maskId = `${ name }-mask-${ rootId }`;
+		svg.el(`<mask id="${ maskId }"><path d="${ this.toPath() }" fill="white" stroke="none" /></mask>`, SVGMaskElement, svg.defs);
+		const scale = Math.abs(degChange / 360);
+		const stops = colors.flatMap(([ color, start, end ]) => [
+			`${ color } ${ fix3(Math.abs(start * scale)) }%`,
+			`${ color } ${ fix3(Math.abs(end * scale)) }%`,
+		]).concat(`${ colors[ 0 ]![ 0 ] } 100%`);
+		const divStyle = formatStyle({
+			background: `conic-gradient(from ${ fix3(fromDeg) }deg, ${ stops.join(", ") })`,
+			"background-position": `${ cx }px ${ cy }px`,
+			height: "100%",
+			width: "100%",
+		});
+		svg.el(`<foreignObject width="${ svg.width }" height="${ svg.height }" x="-${ svg.width / 2 }" y="-${ svg.height / 2 }" mask="url(#${ maskId })"><div style="${ divStyle }" /></foreignObject>`, SVGForeignObjectElement, g);
 	}
 
 	public override toPath(): string {

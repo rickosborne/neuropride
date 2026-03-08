@@ -1,6 +1,6 @@
 import { byId } from "./dom-like.js";
 import { degFromRad, fix3, intersect } from "./geometry.js";
-import { type Gradient, GRADIENT_DEFAULT } from "./gradient.js";
+import { type Gradient, GRADIENT_DEFAULT, type MeasuredGradientSegment, measureGradient } from "./gradient.js";
 import { Arc, Neck, type Pathable, Quad, Triangle } from "./pathable.js";
 import { randomId } from "./random-id.js";
 import { Spectacle } from "./spectacle.js";
@@ -211,8 +211,15 @@ export class NeuroPrideInf {
 				g.transform = transform;
 			}, true);
 			Spectacle.compose(this.#gradient, stats, (gradient, statsValues) => {
-				const paths = this.generatePaths(g, statsValues);
-				this.renderSplitPaths(paths, gradient, s, rootId, g);
+				for (const child of Array.from(g.$el.childNodes)) {
+					g.$el.removeChild(child);
+				}
+				for (const child of Array.from(svg.defs.childNodes)) {
+					svg.defs.removeChild(child);
+				}
+				const paths = this.generatePaths(statsValues);
+				this.renderSplitGradients(paths, gradient, s, rootId, g);
+				// this.renderSplitPaths(paths, gradient, s, rootId, g);
 			});
 		}, undefined, rootId);
 		return svg;
@@ -225,13 +232,9 @@ export class NeuroPrideInf {
 	}
 
 	private generatePaths(
-		g: SVGElementProxy<SVGGElement>,
 		stats: InfinityStats,
 	): Pathable[] {
 		const { h, inner, ix, iy, jx, jy, q, p, r, riy, theta, u, v, vertical } = stats;
-		for (const child of Array.from(g.$el.childNodes)) {
-			g.$el.removeChild(child);
-		}
 		const front: Pathable[] = [];
 		const back: Pathable[] = [];
 		if (jx < 0) {
@@ -310,6 +313,38 @@ export class NeuroPrideInf {
 		return front.concat(back);
 	}
 
+	private renderSplitGradients(
+		paths: Pathable[],
+		gradient: Readonly<Gradient>,
+		svg: RickSVG,
+		rootId: string,
+		g: SVGElementProxy<SVGGElement>,
+	): void {
+		const totalLength = fix3(paths.reduce((p, c) => p + c.length, 0));
+		let pathStart = 0;
+		let pathStart100 = 0;
+		const grad = measureGradient(gradient);
+		for (const path of paths) {
+			const pathEnd = pathStart + path.length;
+			const pathEnd100 = fix3(100 * pathEnd / totalLength);
+			const pathWidth100 = pathEnd100 - pathStart100;
+			const scale100 = 100 / pathWidth100;
+			const colors = grad.filter(([ _c, gStart100, gEnd100 ]) => (pathStart100 >= gStart100 && pathStart100 <= gEnd100) || (pathEnd100 >= gStart100 && pathEnd100 <= gEnd100) || (pathStart100 <= gStart100 && pathEnd100 >= gEnd100))
+				.map(([ c, s, e ]): MeasuredGradientSegment => [ c, fix3(Math.max(0, (s - pathStart100) * scale100)), fix3(Math.min(100, (e - pathStart100) * scale100)) ]);
+			if (colors.length < 1) {
+				console.warn("No colors for path", { path, startPercent100: pathStart100, endPercent100: pathEnd100, widthPercent100: pathWidth100, scale100, grad });
+				continue;
+			} else {
+				console.log({ path, colors });
+			}
+			path.toFilledPath(colors, rootId, svg, g);
+			pathStart = pathEnd;
+			pathStart100 = pathEnd100;
+		}
+	}
+
+	// @ts-expect-error Not used at the moment
+	// noinspection JSUnusedLocalSymbols
 	private renderSplitPaths(
 		paths: Pathable[],
 		gradient: Readonly<Gradient>,
