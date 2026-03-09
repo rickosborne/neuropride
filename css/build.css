@@ -27,8 +27,7 @@ h1, h2, h3, h4, h5, h6 {
 body {
 	background-color: var(--cb);
 	color: var(--ct);
-	display: flex;
-	flex-direction: column;
+	position: relative;
 }
 
 #body a, #body a:visited {
@@ -47,22 +46,28 @@ body {
 }
 
 #main-h {
-	display: flex;
-	flex-direction: row;
-	flex-grow: 1;
-	flex-shrink: 0;
+	bottom: 0;
+	left: 0;
+	position: fixed;
+	right: 0;
+	top: 5vw;
 }
 
 #title-bar {
 	align-items: center;
 	background-color: var(--cd);
+	box-sizing: border-box;
 	color: var(--ct);
 	display: flex;
 	flex-direction: row;
 	font-size: 120%;
 	gap: 1em;
-	height: fit-content;
+	height: 5vw;
+	left: 0;
 	padding: var(--pl);
+	position: fixed;
+	right: 0;
+	top: 0;
 }
 
 #main-menu {
@@ -123,14 +128,35 @@ body {
 
 #panels {
 	background-color: var(--cp);
-	display: flex;
-	flex-direction: column;
-	overflow: hidden;
+	bottom: 0;
+	left: 0;
+	overflow: auto;
+	position: fixed;
+	top: 5vw;
+	width: 30vw;
 }
 
 .panel {
-	max-width: 30vw;
 	width: 100%;
+}
+
+.panel.long[open] {
+	flex: 1;
+	min-height: 8em;
+}
+
+.panel.long {;
+	overflow-y: scroll;
+	position: relative;
+}
+
+.panel.long form {
+	bottom: 0;
+	left: 0;
+	overflow-y: auto;
+	position: absolute;
+	right: 0;
+	top: 1.5em;
 }
 
 .panel summary {
@@ -151,22 +177,6 @@ body {
 	font-size: 90%;
 	gap: var(--ph);
 	margin: var(--pv2) 0;
-}
-
-.panel.long {;
-	flex: 1;
-	min-width: 10em;
-	overflow-y: scroll;
-	position: relative;
-}
-
-.panel.long form {
-	bottom: 0;
-	left: 0;
-	overflow-y: auto;
-	position: absolute;
-	right: 0;
-	top: 1.5em;
 }
 
 .panel td label {
@@ -201,6 +211,10 @@ body {
 	color: var(--ci);
 }
 
+input[type=range] {
+	width: 100%;
+}
+
 .ta-r {
 	text-align: end;
 }
@@ -216,7 +230,7 @@ details.panel summary:before {
 	width: 1.5em;
 }
 
-details.panel:open summary::before {
+details.panel[open] summary::before {
 	content: "▼ ";
 	display: inline-block;
 	width: 1.5em;
@@ -257,10 +271,11 @@ tr.selected label {
 }
 
 #content {
-	flex-grow: 1;
-	max-height: 100%;
-	max-width: 100%;
-	position: relative;
+	bottom: 0;
+	left: 30vw;
+	position: absolute;
+	right: 0;
+	top: 0;
 }
 
 .checkerboard {
@@ -273,6 +288,7 @@ tr.selected label {
 	flex-direction: row;
 	justify-content: center;
 	left: 4vw;
+	padding: 1vw;
 	position: absolute;
 	right: 4vw;
 	top: 4vw;
@@ -332,12 +348,17 @@ form td {
 		--line: 4vw;
 	}
 
+	#title-bar {
+		height: 8vw;
+	}
+
 	#main-h {
-		flex-direction: column;
+		top: 8vw;
 	}
 
 	#content {
-		order: 1;
+		bottom: 50vh;
+		left: 0;
 	}
 
 	#panels {
@@ -345,9 +366,10 @@ form td {
 		grid-template:
 			"shape colors"
 			"draw colors"
-		;
-		min-height: 50vh;
-		order: 2;
+			"pattern colors";
+		padding-bottom: 5vh;
+		top: 50vh;
+		width: 100vw;
 	}
 
 	#shape-panel {
@@ -362,20 +384,21 @@ form td {
 		grid-area: draw;
 	}
 
+	#pattern-panel {
+		grid-area: pattern;
+	}
+
 	#info-panel {
 		display: none;
 	}
 
 	.panel {
-		width: 50vw;
 		max-width: 50vw;
+		width: 50vw;
 	}
 
 	#colors-panel {
 		padding-bottom: 3em;
 	}
 
-	input[type=range] {
-		width: 100%;
-	}
 }

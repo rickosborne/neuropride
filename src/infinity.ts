@@ -46,6 +46,8 @@ interface InfinityStats {
 }
 
 interface MaskStats {
+	drawH: number;
+	drawW: number;
 	m: number;
 	mInner: number;
 	mOuter: number;
@@ -86,9 +88,6 @@ export class NeuroPrideInf {
 
 	public asSVG($parent: HTMLElement): RickSVG {
 		const rootId = randomId();
-		const { px } = this;
-		const halfPx = px / 2;
-		const svg = new RickSVG($parent, px * 1.25, px * 0.75);
 		const $infoR = byId("info-r", HTMLTableCellElement);
 		const $infoGap = byId("info-gap", HTMLTableCellElement);
 		const $infoP = byId("info-p", HTMLTableCellElement);
@@ -102,11 +101,8 @@ export class NeuroPrideInf {
 				ce.innerText = String(value);
 			}
 		};
-		const gTransform = this.#vScale.map((vScale) => {
-			return `translate(${ halfPx * 1.25 } ${ halfPx * 0.75 }) scale(1,${ -vScale })`;
-		});
 		const stats: Spectacle<InfinityStats> = Spectacle.compose(this.#gap, this.#thickness, (gap1, thickness01) => {
-			const r = fix3(px / 5);
+			const r = fix3(100);
 			setInfo($infoR, r);
 			let gap = fix3(r * gap1 * thickness01);
 			setInfo($infoGap, gap);
@@ -153,7 +149,7 @@ export class NeuroPrideInf {
 			const riy = fix3(Math.sqrt(r * r - p * p));
 			return { cosTheta, gap, h, inner, ix, iy, jx, jy, q, p, r, riy, sinTheta, theta, thick, u, v, vertical };
 		});
-		const maskStats: Spectacle<MaskStats> = Spectacle.compose(this.#mask, stats, (mask01, statsValues) => {
+		const maskStats: Spectacle<MaskStats> = Spectacle.compose(this.#mask, stats, this.#vScale, (mask01, statsValues, vScale) => {
 			const { cosTheta, inner, p, r, sinTheta, theta, thick, u, vertical } = statsValues;
 			let mask = fix3(Math.min(inner, thick) * mask01);
 			if (mask01 > 0 && mask === 0) {
@@ -171,7 +167,16 @@ export class NeuroPrideInf {
 			const um = fix3(mask / sinTheta);
 			const mix = fix3(mInner * sinTheta);
 			const miy = fix3(mInner * cosTheta);
-			return { m, mask, mInner, mOuter, mix, miy, p, theta, thick, u, um, vertical };
+			const drawH = fix3(mOuter * 2 * vScale);
+			const drawW = fix3(p * 2 + mask * 2 + r * 2);
+			return { drawH, drawW, m, mask, mInner, mOuter, mix, miy, p, theta, thick, u, um, vertical };
+		});
+		const gTransform = Spectacle.compose(this.#vScale, maskStats, (vScale, ms) => {
+			return `translate(${ ms.drawW / 2 } ${ ms.drawH / 2 }) scale(1,${ -vScale })`;
+		});
+		const svg = new RickSVG($parent, maskStats.value.drawW, maskStats.value.drawH);
+		maskStats.watch((ms) => {
+			svg.svg.setAttributeNS(null, "viewBox", `0 0 ${ms.drawW} ${ms.drawH}`);
 		});
 		svg.group((g, s) => {
 			gTransform.watch((transform) => {
@@ -234,7 +239,6 @@ export class NeuroPrideInf {
 				if (drawStrategy === "split" && pattern === "queue") {
 					paths = this.splitPaths(paths, gradient);
 				}
-				console.log(paths.slice());
 				this.renderPaths(paths, s, g);
 				if (pattern === "behind") {
 					this.paintBehind(paths, gradient, svg, rootId, statsValues.r, statsValues.gap, behindDeg);
@@ -277,8 +281,8 @@ export class NeuroPrideInf {
 			back.unshift(new Triangle(`path-${ rootId }-seCross`, "Underbar", jx, -jy, 0, -v, p, 0, undefined, true));
 		} else {
 			// Normal rectangles.
-			front.push(new Quad(`path-${ rootId }-nwCross`, "Underbar", -u, -1, -q, h, -jx, jy, 1, v));
-			back.unshift(new Quad(`path-${ rootId }-seCross`, "Underbar", u, 1, q, -h, jx, -jy, -1, -v));
+			front.push(new Quad(`path-${ rootId }-nwCross`, "Underbar", -u, -0.5, -q, h, -jx, jy, 0.5, v));
+			back.unshift(new Quad(`path-${ rootId }-seCross`, "Underbar", u, 0, q, -h, jx, -jy, 0, -v));
 		}
 		if (vertical) {
 			// bigCross.d = "";
@@ -425,15 +429,12 @@ export class NeuroPrideInf {
 			remain.delete(path.id);
 			let $el = g.$el.querySelector(`#${ path.id }`) as SVGPathElement | null;
 			if ($el == null) {
-				console.log(`Creating ${ path.id }`);
 				$el = svg.path(`<path d="${ path.toPath() }" id="${ path.id }" />`).$el;
 				if (previous != null) {
 					previous.insertAdjacentElement("afterend", $el);
 				} else {
 					g.$el.insertAdjacentElement("afterbegin", $el);
 				}
-			} else {
-				console.log(`Exists: ${ path.id }`)
 			}
 			previous = $el;
 			$el.setAttributeNS(null, "d", path.toPath());
