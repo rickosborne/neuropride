@@ -1,23 +1,32 @@
 import { byId } from "./dom-like.js";
-import { degFromRad, fix3, intersect } from "./geometry.js";
-import { type Gradient, GRADIENT_DEFAULT, type MeasuredGradientSegment, measureGradient } from "./gradient.js";
-import { Arc, Neck, type Pathable, Quad, Triangle } from "./pathable.js";
+import { degFromRad, fix3, intersect, radFromDeg } from "./geometry.js";
+import { type Gradient, GRADIENT_DEFAULT, type MeasuredGradientSegment, measureGradient, reverseGradient } from "./gradient.js";
+import { Arc, type DrawPart, Neck, type Pathable, Quad, Triangle } from "./pathable.js";
 import { randomId } from "./random-id.js";
 import { Spectacle } from "./spectacle.js";
-import { RickSVG, type SVGElementProxy } from "./svg.js";
+import { RickSVG, type SVGElementProxy, svgProxy } from "./svg.js";
+
+export type DrawStrategy = "filled" | "split";
+export type PatternOrientation = "behind" | "lanes" | "queue";
+
+export const asDrawStrategy = (ds: string): DrawStrategy => ds === "split" ? "split" : "filled";
+export const asPatternOrientation = (po: string): PatternOrientation => po === "behind" || po === "lanes" ? po : "queue";
 
 export interface InfSpec {
-	drawStrategy?: string | undefined;
+	behindDeg?: number | undefined;
+	drawStrategy?: DrawStrategy | undefined;
 	gap?: number | undefined;
 	gradient?: Gradient | undefined;
 	inner: number;
 	mask: number;
+	pattern?: PatternOrientation | undefined;
 	thickness: number;
 	vScale: number;
 }
 
 interface InfinityStats {
 	cosTheta: number;
+	gap: number;
 	h: number;
 	inner: number;
 	ix: number | undefined;
@@ -52,19 +61,23 @@ interface MaskStats {
 }
 
 export class NeuroPrideInf {
-	readonly #drawStrategy: Spectacle<string>;
+	readonly #behindDeg: Spectacle<number>;
+	readonly #drawStrategy: Spectacle<DrawStrategy>;
 	readonly #gap: Spectacle<number>;
 	readonly #gradient: Spectacle<Readonly<Gradient>>;
 	readonly #mask: Spectacle<number>;
+	readonly #pattern: Spectacle<PatternOrientation>;
 	readonly #thickness: Spectacle<number>;
 	readonly #vScale: Spectacle<number>;
 	public readonly px: number;
 	private svg: SVGElement | undefined;
 
 	public constructor(init: Partial<InfSpec> = {}) {
+		this.#behindDeg = Spectacle.of(init.behindDeg ?? 0);
 		this.#drawStrategy = Spectacle.of(init.drawStrategy ?? "filled");
 		this.#gap = Spectacle.of(Math.max(-1, Math.min(1, init.gap ?? 0)));
 		this.#mask = Spectacle.of(Math.max(0, Math.min(1, init.mask ?? 0)));
+		this.#pattern = Spectacle.of(init.pattern ?? "queue");
 		this.#thickness = Spectacle.of(init.thickness ?? 1);
 		this.#vScale = Spectacle.of(init.vScale ?? 1);
 		this.#gradient = Spectacle.of(init.gradient ?? GRADIENT_DEFAULT);
@@ -138,7 +151,7 @@ export class NeuroPrideInf {
 			// (x-p)^2 + y*y = r*r
 			// y = sqrt(r*r - p*p)
 			const riy = fix3(Math.sqrt(r * r - p * p));
-			return { cosTheta, h, inner, ix, iy, jx, jy, q, p, r, riy, sinTheta, theta, thick, u, v, vertical };
+			return { cosTheta, gap, h, inner, ix, iy, jx, jy, q, p, r, riy, sinTheta, theta, thick, u, v, vertical };
 		});
 		const maskStats: Spectacle<MaskStats> = Spectacle.compose(this.#mask, stats, (mask01, statsValues) => {
 			const { cosTheta, inner, p, r, sinTheta, theta, thick, u, vertical } = statsValues;
@@ -213,18 +226,24 @@ export class NeuroPrideInf {
 			gTransform.watch((transform) => {
 				g.transform = transform;
 			}, true);
-			Spectacle.compose(this.#gradient, stats, this.#drawStrategy, (gradient, statsValues, drawStrategy) => {
-				for (const child of Array.from(g.$el.childNodes)) {
-					g.$el.removeChild(child);
-				}
+			Spectacle.compose(this.#gradient, stats, this.#drawStrategy, this.#pattern, this.#behindDeg, (gradient, statsValues, drawStrategy, pattern, behindDeg) => {
 				for (const child of Array.from(svg.defs.childNodes)) {
 					svg.defs.removeChild(child);
 				}
-				const paths = this.generatePaths(statsValues);
-				if (drawStrategy === "split") {
-					this.renderSplitPaths(paths, gradient, s, rootId, g);
+				let paths = this.generatePaths(statsValues, rootId);
+				if (drawStrategy === "split" && pattern === "queue") {
+					paths = this.splitPaths(paths, gradient);
+				}
+				console.log(paths.slice());
+				this.renderPaths(paths, s, g);
+				if (pattern === "behind") {
+					this.paintBehind(paths, gradient, svg, rootId, statsValues.r, statsValues.gap, behindDeg);
+				} else if (pattern === "lanes") {
+					this.paintLanes(paths, gradient, svg, statsValues);
+				} else if (drawStrategy === "split") {
+					this.paintSplits(paths, g);
 				} else {
-					this.renderSplitGradients(paths, gradient, s, rootId, g);
+					this.paintQueue(paths, gradient, g, svg);
 				}
 			});
 		}, undefined, rootId);
@@ -239,6 +258,7 @@ export class NeuroPrideInf {
 
 	private generatePaths(
 		stats: InfinityStats,
+		rootId: string,
 	): Pathable[] {
 		const { h, inner, ix, iy, jx, jy, q, p, r, riy, theta, u, v, vertical } = stats;
 		const front: Pathable[] = [];
@@ -246,23 +266,23 @@ export class NeuroPrideInf {
 		if (jx < 0) {
 			if (ix != null && iy != null) {
 				// Triangular wedges instead of crossbars.
-				front.push(new Triangle("nwCross", -u, 0, -q, h, ix, iy));
-				back.unshift(new Triangle("seCross", u, 0, q, -h, -ix, -iy));
+				front.push(new Triangle(`path-${ rootId }-nwCross`, "Underbar", -u, 0, -q, h, ix, iy));
+				back.unshift(new Triangle(`path-${ rootId }-seCross`, "Underbar", u, 0, q, -h, -ix, -iy));
 			} else {
 				// Vertical — no crossbars.
 			}
 		} else if (inner === 0) {
 			// Big triangular wedges
-			front.push(new Triangle("nwCross", -jx, jy, 0, v, -p, 0));
-			back.unshift(new Triangle("seCross", jx, -jy, 0, -v, p, 0, undefined, true));
+			front.push(new Triangle(`path-${ rootId }-nwCross`, "Underbar", -jx, jy, 0, v, -p, 0));
+			back.unshift(new Triangle(`path-${ rootId }-seCross`, "Underbar", jx, -jy, 0, -v, p, 0, undefined, true));
 		} else {
 			// Normal rectangles.
-			front.push(new Quad("nwCross", -u, 0, -q, h, -jx, jy, 0, v));
-			back.unshift(new Quad("seCross", u, 0, q, -h, jx, -jy, 0, -v));
+			front.push(new Quad(`path-${ rootId }-nwCross`, "Underbar", -u, -1, -q, h, -jx, jy, 1, v));
+			back.unshift(new Quad(`path-${ rootId }-seCross`, "Underbar", u, 1, q, -h, jx, -jy, -1, -v));
 		}
 		if (vertical) {
 			// bigCross.d = "";
-			front.push(new Neck("nwNeck", {
+			front.push(new Neck(`path-${ rootId }-nwNeck`, "LRing", {
 				bi: [ -p + inner, 0 ],
 				bo: [ 0, riy ],
 				ei: [ -p, inner ],
@@ -272,8 +292,8 @@ export class NeuroPrideInf {
 				si: [ -p + inner, 0 ],
 				sm: [ -p + inner, 0 ],
 			}));
-			front.push(new Arc("leftArc", -p, 0, inner, r, 90, 180 + theta));
-			back.unshift(new Neck("seNext", {
+			front.push(new Arc(`path-${ rootId }-leftArc`, "LRing", -p, 0, inner, r, 90, 180 + theta));
+			back.unshift(new Neck(`path-${ rootId }-seNeck`, "RRing", {
 				bi: [ p - inner, 0 ],
 				bo: [ 0, -riy ],
 				ei: [ p, -inner ],
@@ -283,10 +303,10 @@ export class NeuroPrideInf {
 				si: [ p - inner, 0 ],
 				sm: [ p - inner, 0 ],
 			}));
-			back.unshift(new Arc("rightArc", p, 0, inner, r, 90 + theta, -180 - theta, true));
+			back.unshift(new Arc(`path-${ rootId }-rightArc`, "RRing", p, 0, inner, r, 90 + theta, -180 - theta, true));
 		} else {
 			if (jx < 0) {
-				front.push(new Neck("nwNeck", {
+				front.push(new Neck(`path-${ rootId }-nwNeck`, "LRing", {
 					bi: [ jx, jy ],
 					bo: [ 0, riy ],
 					ei: [ -p, inner ],
@@ -296,8 +316,8 @@ export class NeuroPrideInf {
 					si: [ -q, h ],
 					sm: [ ix ?? -q, iy ?? h ],
 				}));
-				front.push(new Arc("leftArc", -p, 0, inner, r, 90, 180 + theta));
-				back.unshift(new Neck("seNeck", {
+				front.push(new Arc(`path-${ rootId }-leftArc`, "LRing", -p, 0, inner, r, 90, 180 + theta));
+				back.unshift(new Neck(`path-${ rootId }-seNeck`, "RRing", {
 					bi: [ -jx, -jy ],
 					bo: [ 0, -riy ],
 					ei: [ p, -inner ],
@@ -307,25 +327,65 @@ export class NeuroPrideInf {
 					si: [ q, -h ],
 					sm: [ ix == null ? q : -ix, iy == null ? -h : -iy ],
 				}));
-				back.unshift(new Arc("rightArc", p, 0, inner, r, 90 + theta, -180 - theta, true));
+				back.unshift(new Arc(`path-${ rootId }-rightArc`, "RRing", p, 0, inner, r, 90 + theta, -180 - theta, true));
 			} else {
-				front.push(new Arc("leftArc", -p, 0, inner, r, 90 - theta, 180 + (2 * theta)));
-				back.unshift(new Arc("rightArc", p, 0, inner, r, 90 + theta, -180 - (2 * theta), true));
+				front.push(new Arc(`path-${ rootId }-leftArc`, "LRing", -p, 0, inner, r, 90 - theta, 180 + (2 * theta)));
+				back.unshift(new Arc(`path-${ rootId }-rightArc`, "RRing", p, 0, inner, r, 90 + theta, -180 - (2 * theta), true));
 			}
-			// front.push(new Caulk("swCaulk", -jx, -jy, -q, -h));
-			front.push(new Quad("bigCross", -q, -h, jx, jy, q, h, -jx, -jy));
-			// back.unshift(new Caulk("neCaulk", jx, jy, q, h));
+			front.push(new Quad(`path-${ rootId }-bigCross`, "Overbar", -q, -h, jx, jy, q, h, -jx, -jy));
 		}
 		return front.concat(back);
 	}
 
-	private renderSplitGradients(
-		paths: Pathable[],
-		gradient: Readonly<Gradient>,
-		svg: RickSVG,
-		rootId: string,
-		g: SVGElementProxy<SVGGElement>,
-	): void {
+	private paintBehind(paths: Readonly<Pathable[]>, gradient: Readonly<Gradient>, svg: RickSVG, rootId: string, r: number, gap: number, behindDeg: number): void {
+		const behindId = `behind-${ rootId }`;
+		const behindFill = `url(#${ behindId })`;
+		let behindEl = svg.defs.querySelector(`#${ behindId }`) as SVGLinearGradientElement | null;
+		if (behindEl == null) {
+			const measured = measureGradient(gradient)
+			const lg = svg.linearGradient(measured, [ 0, r ], [ 0, -r ], behindId);
+			lg.gradientUnits = "userSpaceOnUse";
+			behindEl = lg.$el;
+		}
+		const sinBehind = Math.abs(Math.sin(radFromDeg(behindDeg)));
+		const scaleY = fix3(1 + sinBehind + ((sinBehind * gap) / (r * 2)));
+		behindEl.setAttributeNS(null, "gradientTransform", `rotate(${ behindDeg } 0 0) scale(1 ${ scaleY })`);
+		for (const path of paths) {
+			const $el = svgProxy<SVGPathElement>(svg.svg.querySelector(`#${ path.id }`)!);
+			$el.fill = behindFill;
+			$el.stroke = "none";
+			$el[ "stroke-width" ] = 0;
+		}
+	}
+
+	private paintLanes(paths: Pathable[], gradient: Readonly<Gradient>, svg: RickSVG, stats: InfinityStats): void {
+		const { inner, p, r, theta, thick } = stats;
+		const halfThick = fix3(thick / 2);
+		const forward = measureGradient(gradient);
+		const reversed = reverseGradient(forward);
+		const underbar = svg.linearGradient(reversed, [ 0, -halfThick ], [ 0, halfThick ]);
+		underbar.gradientTransform = `rotate(${ fix3(-theta) })`;
+		const overbar = svg.linearGradient(forward, [ 0, -halfThick ], [ 0, halfThick ]);
+		overbar.gradientTransform = `rotate(${ fix3(theta) })`;
+		const lRing = svg.radialGradient(reversed, [ -p, 0 ], [ inner, r ]);
+		const rRing = svg.radialGradient(forward, [ p, 0 ], [ inner, r ]);
+		const partFills: Record<DrawPart, string> = {
+			LRing: lRing.id,
+			Overbar: overbar.id,
+			RRing: rRing.id,
+			Underbar: underbar.id,
+		};
+		for (const path of paths) {
+			const $el = svgProxy<SVGElement>(svg.svg.querySelector(`#${ path.id }`)!);
+			const fill = `url(#${ partFills[ path.drawPart ] })`;
+			$el.fill = fill;
+			const stroke = path.stroke(fill);
+			$el.stroke = typeof stroke === "string" ? stroke : stroke[ 0 ];
+			$el[ "stroke-width" ] = typeof stroke === "string" ? 0 : stroke[ 1 ];
+		}
+	}
+
+	private paintQueue(paths: Pathable[], gradient: Readonly<Gradient>, g: SVGElementProxy<SVGGElement>, svg: RickSVG): void {
 		const totalLength = fix3(paths.reduce((p, c) => p + c.length, 0));
 		let pathStart = 0;
 		let pathStart100 = 0;
@@ -340,64 +400,55 @@ export class NeuroPrideInf {
 			if (colors.length < 1) {
 				console.warn("No colors for path", { path, startPercent100: pathStart100, endPercent100: pathEnd100, widthPercent100: pathWidth100, scale100, grad });
 				continue;
-			} else {
-				console.log({ path, colors });
 			}
-			path.toFilledPath(colors, rootId, svg, g);
+			path.toFilledPath(colors, svg, g);
 			pathStart = pathEnd;
 			pathStart100 = pathEnd100;
 		}
 	}
 
-	private renderSplitPaths(
-		paths: Pathable[],
-		gradient: Readonly<Gradient>,
-		svg: RickSVG,
-		rootId: string,
-		g: SVGElementProxy<SVGGElement>,
-	): void {
-		const totalLength = fix3(paths.reduce((p, c) => p + c.length, 0));
-		let atLength = 0;
-		let goal100 = 0;
-		let lastColor = "transparent";
-		let colorsRemain = gradient.length;
-		for (const [ color, percent100 ] of gradient) {
-			colorsRemain--;
-			lastColor = color;
-			goal100 += percent100;
-			const goalLength = fix3((goal100 / 100) * totalLength);
-			while (atLength < goalLength && paths.length > 0) {
-				const path = paths.shift()!;
-				let toRender: Pathable = path;
-				if ((path.length + atLength) > goalLength) {
-					const needLength = fix3(goalLength - atLength);
-					const percent01 = fix3(needLength / path.length);
-					if (percent01 > 0.02) {
-						const subs = path.split(percent01);
-						if (subs != null) {
-							toRender = subs.shift()!;
-							while (subs.length > 0) {
-								paths.unshift(subs.pop()!);
-							}
-						}
-					}
-				}
-				const stroke = toRender.stroke(color);
-				svg.path(`<path d="${ toRender.toPath() }" id="path-${ rootId }-${ toRender.name }" fill="${ color }" ${ typeof stroke === "string" ? `stroke="${ stroke }"` : `stroke="${ stroke[ 0 ] }" stroke-width="${ stroke[ 1 ] }"` } />`, g);
-				atLength += toRender.length;
-				if (atLength < goalLength && ((goalLength - atLength) / goalLength) < 0.05) {
-					if (colorsRemain > 0 || paths.length === 0) {
-						break; // continue on to next color
-					}
-				}
-			}
-		}
+	private paintSplits(paths: Pathable[], g: SVGElementProxy<SVGGElement>): void {
 		for (const path of paths) {
-			svg.path(`<path d="${ path.toPath() }" id="path-${ rootId }-${ path.name }" fill="${ lastColor }" stroke="none" />`, g);
+			const $el = svgProxy<SVGPathElement>(g.$el.querySelector(`#${ path.id }`)!);
+			$el.fill = path.color;
+			const stroke = path.stroke(path.color);
+			$el.stroke = typeof stroke === "string" ? stroke : stroke[ 0 ];
+			$el[ "stroke-width" ] = typeof stroke === "string" ? 0 : stroke[ 1 ];
 		}
 	}
 
-	public setDrawStrategy(strategy: string): void {
+	private renderPaths(paths: Pathable[], svg: RickSVG, g: SVGElementProxy<SVGGElement>): void {
+		g.$el.innerHTML = "";
+		let previous: SVGPathElement | undefined = undefined;
+		const remain = new Map<string, Element>(Array.from(g.$el.querySelectorAll("[id]")).map((path) => [ path.id, path ]));
+		for (const path of paths) {
+			remain.delete(path.id);
+			let $el = g.$el.querySelector(`#${ path.id }`) as SVGPathElement | null;
+			if ($el == null) {
+				console.log(`Creating ${ path.id }`);
+				$el = svg.path(`<path d="${ path.toPath() }" id="${ path.id }" />`).$el;
+				if (previous != null) {
+					previous.insertAdjacentElement("afterend", $el);
+				} else {
+					g.$el.insertAdjacentElement("afterbegin", $el);
+				}
+			} else {
+				console.log(`Exists: ${ path.id }`)
+			}
+			previous = $el;
+			$el.setAttributeNS(null, "d", path.toPath());
+			// $el.setAttributeNS(null, "opacity", "50%");
+		}
+		for (const path of remain.values()) {
+			path.parentNode?.removeChild(path);
+		}
+	}
+
+	public setBehindDeg(deg: number): void {
+		this.#behindDeg.update(deg);
+	}
+
+	public setDrawStrategy(strategy: DrawStrategy): void {
 		this.#drawStrategy.update(strategy);
 	}
 
@@ -413,11 +464,64 @@ export class NeuroPrideInf {
 		this.#mask.update(mask);
 	}
 
+	public setPattern(pattern: PatternOrientation): void {
+		this.#pattern.update(pattern);
+	}
+
 	public setThickness(thickness: number): void {
 		this.#thickness.update(thickness);
 	}
 
 	public setVScale(vScale: number): void {
 		this.#vScale.update(vScale);
+	}
+
+	private splitPaths(
+		paths: Readonly<Pathable[]>,
+		gradient: Readonly<Gradient>,
+	): Pathable[] {
+		const totalLength = fix3(paths.reduce((p, c) => p + c.length, 0));
+		let atLength = 0;
+		let goal100 = 0;
+		let colorsRemain = gradient.length;
+		let lastColor = "transparent";
+		const splits: Pathable[] = [];
+		const p = paths.slice();
+		for (const [ color, percent100 ] of gradient) {
+			lastColor = color;
+			colorsRemain--;
+			goal100 += percent100;
+			const goalLength = fix3((goal100 / 100) * totalLength);
+			while (atLength < goalLength && p.length > 0) {
+				const path = p.shift()!;
+				let toRender: Pathable = path;
+				if ((path.length + atLength) > goalLength) {
+					const needLength = fix3(goalLength - atLength);
+					const percent01 = fix3(needLength / path.length);
+					if (percent01 > 0.02) {
+						const subs = path.split(percent01);
+						if (subs != null) {
+							toRender = subs.shift()!;
+							while (subs.length > 0) {
+								p.unshift(subs.pop()!);
+							}
+						}
+					}
+				}
+				splits.push(toRender);
+				toRender.color = color;
+				atLength += toRender.length;
+				if (atLength < goalLength && ((goalLength - atLength) / goalLength) < 0.05) {
+					if (colorsRemain > 0 || p.length === 0) {
+						break; // continue on to next color
+					}
+				}
+			}
+		}
+		for (const path of p) {
+			path.color = lastColor;
+			splits.push(path);
+		}
+		return splits;
 	}
 }

@@ -341,9 +341,25 @@ form td {
 	}
 
 	#panels {
-		flex-direction: row;
+		display: grid;
+		grid-template:
+			"shape colors"
+			"draw colors"
+		;
 		min-height: 50vh;
 		order: 2;
+	}
+
+	#shape-panel {
+		grid-area: shape;
+	}
+
+	#colors-panel {
+		grid-area: colors;
+	}
+
+	#draw-strategy-panel {
+		grid-area: draw;
 	}
 
 	#info-panel {
@@ -351,10 +367,11 @@ form td {
 	}
 
 	.panel {
-		max-width: 33vw;
+		width: 50vw;
+		max-width: 50vw;
 	}
 
-	.panel.long form {
+	#colors-panel {
 		padding-bottom: 3em;
 	}
 

@@ -38,7 +38,7 @@
 </nav>
 <div id="main-h">
 	<section class="panels" id="panels">
-		<details class="panel" open>
+		<details class="panel" id="shape-panel" open>
 			<summary>shape</summary>
 			<form>
 				<table class="full-w">
@@ -61,28 +61,51 @@
 				</table>
 			</form>
 		</details>
-		<details class="panel long" open>
+		<details class="panel long" id="colors-panel" open>
 			<summary>colors</summary>
 			<form>
 				<table class="full-w" id="color-options"></table>
 			</form>
 		</details>
 		<details class="panel" id="draw-strategy-panel" open>
-			<summary>painting strategy</summary>
+			<summary>drawing strategy</summary>
 			<form>
 				<table class="full-w" id="draw-strategy-options">
 					<tr>
-						<td><input type="radio" name="draw-strategy" value="split" id="draw-strategy-split"></td>
+						<td><input id="draw-strategy-split" name="draw-strategy" type="radio" value="split"></td>
 						<td><label for="draw-strategy-split" title="shape paths are split at color boundaries.  shapes are less regular and less balanced, but easy to paint.">split paths</label></td>
 					</tr>
 					<tr>
-						<td><input type="radio" name="draw-strategy" value="filled" id="draw-strategy-filled"></td>
+						<td><input checked id="draw-strategy-filled" name="draw-strategy" type="radio" value="filled"></td>
 						<td><label for="draw-strategy-filled" title="shapes are kept intact and filled with CSS and SVG gradients.  fewer drawing artifacts, but harder to edit later.">filled gradients</label></td>
 					</tr>
 				</table>
 			</form>
 		</details>
-		<details class="panel" id="info-panel">
+		<details class="panel" id="pattern-panel" open>
+			<summary>pattern orientation</summary>
+			<form>
+				<table class="full-w" id="pattern-options">
+					<tr>
+						<td><input checked id="pattern-queue" name="pattern" type="radio" value="queue"></td>
+						<td><label for="pattern-queue" title="colors are sequenced along the ribbon, as if queued along a line.">queue</label></td>
+					</tr>
+					<tr>
+						<td><input id="pattern-lanes" name="pattern" type="radio" value="lanes"></td>
+						<td><label for="pattern-lanes" title="colors run the entire ribbon, like traffic lanes.">lanes</label></td>
+					</tr>
+					<tr>
+						<td><input id="pattern-behind" name="pattern" type="radio" value="behind"></td>
+						<td><label for="pattern-behind" title="colors are painted without regard to the ribbon, as if behind it.">behind</label></td>
+					</tr>
+					<tr>
+						<td><label for="behind-deg-r" title="angle of rotation for the colors">∡</label></td>
+						<td><input id="behind-deg-r" max="90" min="-90" step="1" type="range" value="0"></td>
+					</tr>
+				</table>
+			</form>
+		</details>
+		<details class="panel long" id="info-panel">
 			<summary>info</summary>
 			<form>
 				<table class="full-w">

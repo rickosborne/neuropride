@@ -13,14 +13,30 @@ export interface SVGElementProxy<E extends SVGElement = SVGElement> {
 	transform: string;
 }
 
-export interface SVGCircleProxy extends SVGElementProxy<SVGCircleElement> {
-	cx: number;
-	cy: number;
-	r: number;
-}
-
 export interface SVGPathProxy extends SVGElementProxy<SVGPathElement> {
 	d: string;
+}
+
+export interface SVGLinearGradientProxy extends SVGElementProxy<SVGLinearGradientElement> {
+	gradientTransform: string;
+	gradientUnits: "userSpaceOnUse" | "objectBoundingBox";
+	spreadMethod: "pad" | "reflect" | "repeat";
+	x1: number;
+	y1: number;
+	x2: number;
+	y2: number;
+}
+
+export interface SVGRadialGradientProxy extends SVGElementProxy<SVGRadialGradientElement> {
+	gradientTransform: string;
+	gradientUnits: "userSpaceOnUse" | "objectBoundingBox";
+	spreadMethod: "pad" | "reflect" | "repeat";
+	cx: number;
+	cy: number;
+	fr: number;
+	fx: number;
+	fy: number;
+	r: number;
 }
 
 export interface SVGRectProxy extends SVGElementProxy<SVGRectElement> {
@@ -49,11 +65,6 @@ export class RickSVG {
 		this.svg = parent.querySelector(`#${ id }`)!;
 		this.#scratch = Array.from(this.svg.querySelectorAll(".scratch") as NodeListOf<SVGGElement>)[ 0 ]!;
 		this.defs = Array.from(this.svg.querySelectorAll("defs"))[0]!;
-		console.log(this.defs);
-	}
-
-	public circle(html: `<circle${ string }/>`, parent?: SVGElement | SVGElementProxy): SVGCircleProxy {
-		return this.el(html, SVGCircleElement, parent);
 	}
 
 	public el<E extends SVGElement, P extends SVGElementProxy<E>>(html: `<${ string }>`, type: SVGElementFn<E>, parent?: SVGElement | SVGElementProxy): P
@@ -83,18 +94,33 @@ export class RickSVG {
 		return g;
 	}
 
-	public linearGradient(
-		gradient: MeasuredGradientSegment[],
-		[x1, y1]: PointXY,
-		[x2, y2]: PointXY,
-	): SVGElementProxy<SVGLinearGradientElement> {
-		const gid = `${this.id}-lg-${this.#nextId++}`;
+	private gradientStops(gradient: MeasuredGradientSegment[]): string[] {
 		const stops: string[] = [];
 		for (const [color, start, end] of gradient) {
 			stops.push(`<stop offset="${fix3(start)}%" stop-color="${color}" />`);
 			stops.push(`<stop offset="${fix3(end)}%" stop-color="${color}" />`);
 		}
+		return stops;
+	}
+
+	public linearGradient(
+		gradient: MeasuredGradientSegment[],
+		[x1, y1]: PointXY,
+		[x2, y2]: PointXY,
+		gid = `${this.id}-lg-${this.#nextId++}`,
+	): SVGLinearGradientProxy {
+		const stops = this.gradientStops(gradient);
 		return this.el(`<linearGradient id="${gid}" x1="${fix3(x1)}" y1="${fix3(y1)}" x2="${fix3(x2)}" y2="${fix3(y2)}" gradientUnits="userSpaceOnUse">${stops.join("")}</linearGradient>`, SVGLinearGradientElement, this.defs);
+	}
+
+	public radialGradient(
+		gradient: MeasuredGradientSegment[],
+		[cx, cy]: PointXY,
+		[ri, ro]: PointXY,
+		gid = `${this.id}-rg-${this.#nextId++}`,
+	): SVGRadialGradientProxy {
+		const stops = this.gradientStops(gradient);
+		return this.el(`<radialGradient id="${gid}" cx="${fix3(cx)}" cy="${fix3(cy)}" fx="${fix3(cx)}" fy="${fix3(cy)}" fr="${fix3(ri)}" r="${fix3(ro)}" gradientUnits="userSpaceOnUse">${stops.join("")}</radialGradient>`, SVGRadialGradientElement, this.defs);
 	}
 
 	public path(html: `<path${ string }/>`, parent?: SVGElement | SVGElementProxy): SVGPathProxy {
@@ -106,7 +132,7 @@ export class RickSVG {
 	}
 }
 
-const svgProxy = <E extends SVGElement>($el: SVGElement): SVGElementProxy<E> => {
+export const svgProxy = <E extends SVGElement>($el: SVGElement): SVGElementProxy<E> => {
 	return new Proxy({ $el } as SVGElementProxy<E>, {
 		get(target, key) {
 			if (key === "$el") {

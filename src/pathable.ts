@@ -1,9 +1,11 @@
 import { formatStyle } from "./dom-like.js";
 import { fix3, type PointXY, radFromDeg } from "./geometry.js";
 import type { MeasuredGradientSegment } from "./gradient.js";
-import { type RickSVG, type SVGElementProxy } from "./svg.js";
+import { type RickSVG, type SVGElementProxy, svgProxy } from "./svg.js";
 
 type StrokeDetails = string | [ stroke: string, strokeWidth: number ];
+
+export type DrawPart = "Underbar" | "Overbar" | "LRing" | "RRing";
 
 /**
  * Slight overdraw to help eliminate abutment artifacts.
@@ -11,25 +13,29 @@ type StrokeDetails = string | [ stroke: string, strokeWidth: number ];
 const fudge = 2;
 
 export interface Pathable {
+	color: string;
+	readonly drawPart: DrawPart;
+	readonly id: string;
 	readonly length: number;
-	readonly name: string;
 
 	split(percent01: number): Pathable[] | undefined;
 
 	stroke(color: string): StrokeDetails;
 
-	toFilledPath(colors: MeasuredGradientSegment[], rootId: string, svg: RickSVG, g: SVGElementProxy<SVGGElement>): void;
+	toFilledPath(colors: MeasuredGradientSegment[], svg: RickSVG, g: SVGElementProxy<SVGGElement>): void;
 
 	toPath(): string;
 }
 
 abstract class PathableBase implements Pathable {
+	public color: string = "transparent";
+
 	protected constructor(
-		public readonly name: string,
+		public readonly id: string,
+		public readonly drawPart: DrawPart,
 		public readonly length: number,
 		public readonly invertPath: boolean,
 	) {
-		this.name = name;
 	}
 
 	protected fudgeSegment(x1: number, y1: number, x2: number, y2: number): [ fx: number, fy: number ] {
@@ -63,9 +69,18 @@ abstract class PathableBase implements Pathable {
 		return "none";
 	}
 
-	public toFilledPath(colors: MeasuredGradientSegment[], rootId: string, svg: RickSVG, g: SVGElementProxy<SVGGElement>): void {
+	public toFilledPath(colors: MeasuredGradientSegment[], svg: RickSVG, g: SVGElementProxy<SVGGElement>): void {
 		const color = colors[ 0 ]?.[ 0 ] ?? "white";
-		svg.path(`<path d="${ this.toPath() }" id="path-${ rootId }-${ this.name }" fill="${ color }" stroke="none" />`, g);
+		let $el = svgProxy<SVGElement>(svg.svg.querySelector(`#${ this.id }`)!);
+		if ($el.$el.tagName.toLowerCase() !== "path") {
+			$el.$el.parentNode?.removeChild($el.$el);
+			svg.path(`<path d="${ this.toPath() }" id="${ this.id }" fill="${ color }" stroke="none" />`, g);
+		} else {
+			$el.fill = color;
+			const stroke = this.stroke(color);
+			$el.stroke = typeof stroke === "string" ? stroke : stroke[ 0 ];
+			$el[ "stroke-width" ] = typeof stroke === "string" ? 0 : stroke[ 1 ];
+		}
 	}
 
 	public toPath(): string {
@@ -75,7 +90,8 @@ abstract class PathableBase implements Pathable {
 
 export class Triangle extends PathableBase {
 	public constructor(
-		name: string,
+		id: string,
+		drawPart: DrawPart,
 		public readonly x1: number,
 		public readonly y1: number,
 		public readonly x2: number,
@@ -85,10 +101,10 @@ export class Triangle extends PathableBase {
 		length: number = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2)) / 2,
 		invertPath: boolean = false,
 	) {
-		super(name, length, invertPath);
+		super(id, drawPart, length, invertPath);
 	}
 
-	public override toFilledPath(colors: MeasuredGradientSegment[], rootId: string, svg: RickSVG, g: SVGElementProxy<SVGGElement>): void {
+	public override toFilledPath(colors: MeasuredGradientSegment[], svg: RickSVG, g: SVGElementProxy<SVGGElement>): void {
 		let color: string;
 		if (colors.length > 1) {
 			const { x1, y1, x2, y2 } = this;
@@ -97,7 +113,7 @@ export class Triangle extends PathableBase {
 		} else {
 			color = colors[ 0 ]?.[ 0 ] ?? "transparent";
 		}
-		super.toFilledPath([ [ color, 0, 0 ] ], rootId, svg, g);
+		super.toFilledPath([ [ color, 0, 0 ] ], svg, g);
 	}
 
 	public override toPath(): string {
@@ -109,7 +125,8 @@ export class Triangle extends PathableBase {
 
 export class Quad extends Triangle {
 	public constructor(
-		name: string,
+		id: string,
+		drawPart: DrawPart,
 		x1: number,
 		y1: number,
 		x2: number,
@@ -120,18 +137,18 @@ export class Quad extends Triangle {
 		public readonly y4: number,
 		invertPath?: boolean,
 	) {
-		super(name, x1, y1, x2, y2, x3, y3, Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2)), invertPath);
+		super(id, drawPart, x1, y1, x2, y2, x3, y3, Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2)), invertPath);
 	}
 
 	public override split(percent01: number): Pathable[] {
-		const { invertPath, x1, y1, x2, y2, x3, y3, x4, y4 } = this;
+		const { drawPart, id, invertPath, x1, y1, x2, y2, x3, y3, x4, y4 } = this;
 		const mx21 = fix3((x2 - x1) * percent01 + x1);
 		const my21 = fix3((y2 - y1) * percent01 + y1);
 		const mx34 = fix3((x3 - x4) * percent01 + x4);
 		const my34 = fix3((y3 - y4) * percent01 + y4);
 		return [
-			new Quad(`${ this.name }-a`, x1, y1, mx21, my21, mx34, my34, x4, y4, invertPath),
-			new Quad(`${ this.name }-b`, mx21, my21, x2, y2, x3, y3, mx34, my34, invertPath),
+			new Quad(`${ id }-a`, drawPart, x1, y1, mx21, my21, mx34, my34, x4, y4, invertPath),
+			new Quad(`${ id }-b`, drawPart, mx21, my21, x2, y2, x3, y3, mx34, my34, invertPath),
 		];
 	}
 
@@ -147,7 +164,8 @@ export class Arc extends PathableBase {
 	public readonly endDeg: number;
 
 	constructor(
-		name: string,
+		id: string,
+		drawPart: DrawPart,
 		public readonly cx: number,
 		public readonly cy: number,
 		public readonly ri: number,
@@ -159,28 +177,27 @@ export class Arc extends PathableBase {
 		const rm = (ri + ro) / 2;
 		const circ = Math.PI * rm * 2;
 		const portion = Math.abs(degChange) / 360;
-		super(name, fix3(circ * portion), invert);
+		super(id, drawPart, fix3(circ * portion), invert);
 		this.endDeg = startDeg + degChange;
 		this.big = portion > 0.5;
 	}
 
 	public override split(percent01: number): Pathable[] {
-		const { cx, cy, degChange, invertPath, ri, ro, startDeg, endDeg } = this;
+		const { cx, cy, degChange, drawPart, id, invertPath, ri, ro, startDeg } = this;
 		const dd = fix3(degChange * percent01);
 		const rd = fix3(degChange - dd);
 		const midDeg = fix3(startDeg + dd);
-		const a = new Arc(`${ this.name }-a`, cx, cy, ri, ro, startDeg, dd, invertPath);
-		const b = new Arc(`${ this.name }-b`, cx, cy, ri, ro, midDeg, rd, invertPath);
-		console.log({ startDeg, endDeg, percent01, a, b });
+		const a = new Arc(`${ id }-a`, drawPart, cx, cy, ri, ro, startDeg, dd, invertPath);
+		const b = new Arc(`${ id }-b`, drawPart, cx, cy, ri, ro, midDeg, rd, invertPath);
 		return [ a, b ];
 	}
 
-	public override toFilledPath(grad: MeasuredGradientSegment[], rootId: string, svg: RickSVG, g: SVGElementProxy<SVGGElement>): void {
+	public override toFilledPath(grad: MeasuredGradientSegment[], svg: RickSVG, g: SVGElementProxy<SVGGElement>): void {
 		if (grad.length === 1) {
-			super.toFilledPath(grad, rootId, svg, g);
+			super.toFilledPath(grad, svg, g);
 			return;
 		}
-		const { cx, cy, degChange, endDeg, invertPath, name, startDeg } = this;
+		const { cx, cy, degChange, endDeg, id, invertPath, startDeg } = this;
 		let colors: MeasuredGradientSegment[] = grad;
 		let fromDeg: number;
 		if (invertPath) {
@@ -194,8 +211,8 @@ export class Arc extends PathableBase {
 			colors = grad;
 			fromDeg = (90 + startDeg) % 360;
 		}
-		const maskId = `${ name }-mask-${ rootId }`;
-		svg.el(`<clipPath id="${ maskId }"><path d="${ this.toPath() }" fill="white" stroke="none" /></clipPath>`, SVGClipPathElement, svg.defs);
+		const clipId = id.concat("-clip");
+		svg.el(`<clipPath id="${ clipId }"><path d="${ this.toPath() }" fill="white" /></clipPath>`, SVGClipPathElement, svg.defs);
 		const scale = Math.abs(degChange / 360);
 		const stops = colors.flatMap(([ color, start, end ]) => [
 			`${ color } ${ fix3(Math.abs(start * scale)) }%`,
@@ -207,22 +224,22 @@ export class Arc extends PathableBase {
 			height: "100%",
 			width: "100%",
 		});
-		svg.el(`<foreignObject width="${ svg.width }" height="${ svg.height }" x="-${ svg.width / 2 }" y="-${ svg.height / 2 }" clip-path="url(#${ maskId })"><div style="${ divStyle }" /></foreignObject>`, SVGForeignObjectElement, g);
+		svg.el(`<foreignObject id="${ id }" width="${ svg.width }" height="${ svg.height }" x="-${ svg.width / 2 }" y="-${ svg.height / 2 }" clip-path="url(#${ clipId })"><div style="${ divStyle }" /></foreignObject>`, SVGForeignObjectElement, g);
 	}
 
-	public override toPath(offset: PointXY = [0,0]): string {
+	public override toPath(offset: PointXY = [ 0, 0 ]): string {
 		const { big, cx, cy, invertPath, ri, ro, startDeg, endDeg } = this;
 		const f = this.invertPath ? -fudge : fudge;
 		let { inner: [ six, siy ], outer: [ sox, soy ] } = this.pointsAtDeg(startDeg - f, cx, cy, ri, ro);
 		let { inner: [ eix, eiy ], outer: [ eox, eoy ] } = this.pointsAtDeg(endDeg + f, cx, cy, ri, ro);
-		six += offset[0];
-		siy += offset[1];
-		sox += offset[0];
-		soy += offset[1];
-		eix += offset[0];
-		eiy += offset[1];
-		eox += offset[0];
-		eoy += offset[1];
+		six += offset[ 0 ];
+		siy += offset[ 1 ];
+		sox += offset[ 0 ];
+		soy += offset[ 1 ];
+		eix += offset[ 0 ];
+		eiy += offset[ 1 ];
+		eox += offset[ 0 ];
+		eoy += offset[ 1 ];
 		let lox: number, loy: number, lix: number, liy: number, rox: number, roy: number, rix: number, riy: number;
 		if (invertPath) {
 			lox = eox;
@@ -276,17 +293,18 @@ export class Neck extends PathableBase {
 	public readonly sm: Readonly<PointXY>;
 
 	public constructor(
-		name: string,
+		id: string,
+		drawPart: DrawPart,
 		{ bi, bo, ei, eo, ri, ro, si, sm }: NeckControls,
 	) {
 		const [ six, siy ] = si;
 		const [ eix, eiy ] = ei;
 		const [ eox, eoy ] = eo;
 		const [ box, boy ] = bo;
-		const id = Math.sqrt((six - eix) * (six - eix) + (siy - eiy) * (siy - eiy));
-		const od = Math.sqrt((eox - box) * (eox - box) + (eoy - boy) * (eoy - boy));
-		const length = fix3((id + od) / 2);
-		super(name, length, false);
+		const idd = Math.sqrt((six - eix) * (six - eix) + (siy - eiy) * (siy - eiy));
+		const odd = Math.sqrt((eox - box) * (eox - box) + (eoy - boy) * (eoy - boy));
+		const length = fix3((idd + odd) / 2);
+		super(id, drawPart, length, false);
 		this.bi = bi;
 		this.bo = bo;
 		this.ei = ei;

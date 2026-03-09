@@ -1,5 +1,5 @@
-export type GradientSegment = [color: string, percent100: number];
-export type MeasuredGradientSegment = [color: string, startPercent100: number, endPercent100: number];
+export type GradientSegment = [ color: string, percent100: number ];
+export type MeasuredGradientSegment = [ color: string, startPercent100: number, endPercent100: number ];
 
 export type Gradient = GradientSegment[];
 
@@ -15,7 +15,7 @@ export const GRADIENT_DEFAULT: Readonly<Gradient> = Object.freeze([
 export const measureGradient = (gradient: Readonly<Gradient>): MeasuredGradientSegment[] => {
 	let at100 = 0;
 	const measured: MeasuredGradientSegment[] = [];
-	for (const [color, percent100] of gradient) {
+	for (const [ color, percent100 ] of gradient) {
 		const next100 = at100 + percent100;
 		measured.push([
 			color,
@@ -25,4 +25,11 @@ export const measureGradient = (gradient: Readonly<Gradient>): MeasuredGradientS
 		at100 = next100;
 	}
 	return measured;
-}
+};
+
+export const reverseGradient = (gradient: MeasuredGradientSegment[]): MeasuredGradientSegment[] => {
+	return gradient.map((_mgs, index) => {
+		const [color, start, end] = gradient[gradient.length - 1 - index]!;
+		return [color, 100 - end, 100 - start];
+	});
+};
