@@ -1,5 +1,5 @@
 import { byId } from "./dom-like.js";
-import { degFromRad, fix3, intersect, radFromDeg } from "./geometry.js";
+import { degFromRad, fix3, intersect, type PointXY, radFromDeg } from "./geometry.js";
 import { type Gradient, GRADIENT_DEFAULT, type MeasuredGradientSegment, measureGradient, reverseGradient } from "./gradient.js";
 import { Arc, type DrawPart, Neck, type Pathable, Quad, Triangle } from "./pathable.js";
 import { randomId } from "./random-id.js";
@@ -68,7 +68,9 @@ export class NeuroPrideInf {
 	readonly #gap: Spectacle<number>;
 	readonly #gradient: Spectacle<Readonly<Gradient>>;
 	readonly #mask: Spectacle<number>;
+	readonly #maskStats: Spectacle<MaskStats>;
 	readonly #pattern: Spectacle<PatternOrientation>;
+	readonly #stats: Spectacle<InfinityStats>;
 	readonly #thickness: Spectacle<number>;
 	readonly #vScale: Spectacle<number>;
 	public readonly px: number;
@@ -83,6 +85,8 @@ export class NeuroPrideInf {
 		this.#thickness = Spectacle.of(init.thickness ?? 1);
 		this.#vScale = Spectacle.of(init.vScale ?? 1);
 		this.#gradient = Spectacle.of(init.gradient ?? GRADIENT_DEFAULT);
+		this.#stats = Spectacle.compose(this.#gap, this.#thickness, (gap1, thickness01) => this.calculateStats(gap1, thickness01));
+		this.#maskStats = Spectacle.compose(this.#mask, this.#stats, this.#vScale, (mask01, statsValues, vScale) => this.calculateMaskStats(mask01, statsValues, vScale));
 		this.px = 1200;
 	}
 
@@ -101,82 +105,22 @@ export class NeuroPrideInf {
 				ce.innerText = String(value);
 			}
 		};
-		const stats: Spectacle<InfinityStats> = Spectacle.compose(this.#gap, this.#thickness, (gap1, thickness01) => {
-			const r = fix3(100);
+		this.#stats.watch(({ gap, inner, jx, p, r, theta, thick }) => {
 			setInfo($infoR, r);
-			let gap = fix3(r * gap1 * thickness01);
 			setInfo($infoGap, gap);
-			const thick01 = Math.max(thickness01, 0.01);
-			const inner01 = 1 - thick01;
-			const thick = fix3(thick01 * r);
 			setInfo($infoThick, thick);
-			const inner = fix3(inner01 * r);
 			setInfo($infoInner, inner);
-			const p = inner + thick + (gap / 2);
 			setInfo($infoP, p);
-			let thetaRad = fix3(Math.asin((inner + (thick / 2)) / p));
-			let theta = degFromRad(thetaRad);
-			let vertical = false;
-			if (Number.isNaN(thetaRad) || Number.isNaN(theta) || theta >= 90) {
-				theta = 90;
-				thetaRad = Math.PI / 2;
-				vertical = true;
-			}
-			let cosTheta, sinTheta, uOff, v;
-			if (vertical) {
-				cosTheta = 0;
-				sinTheta = 1;
-				uOff = 0;
-				v = 0;
-			} else {
-				cosTheta = Math.cos(thetaRad);
-				sinTheta = Math.sin(thetaRad);
-				uOff = Math.round(inner / sinTheta);
-				v = Math.round(thick / (2 * cosTheta));
-			}
 			setInfo($infoAngle, `${ theta }°`);
-			const h = fix3(inner * cosTheta);
-			const qOff = Math.round(inner * sinTheta);
-			const q = p - qOff;
-			const u = p - uOff;
-			const jx = Math.round(p - (r * sinTheta));
 			setInfo($infoJx, jx);
-			const jy = Math.round(r * cosTheta);
-			let [ ix, iy ] = intersect([ -q, -h, jx, jy ], [ -q, h, -jx, jy ]).map((n) => n == null ? undefined : fix3(n));
-			// Intersection of the rings
-			// (x-p)^2 + y*y = r*r
-			// y = sqrt(r*r - p*p)
-			const riy = fix3(Math.sqrt(r * r - p * p));
-			return { cosTheta, gap, h, inner, ix, iy, jx, jy, q, p, r, riy, sinTheta, theta, thick, u, v, vertical };
 		});
-		const maskStats: Spectacle<MaskStats> = Spectacle.compose(this.#mask, stats, this.#vScale, (mask01, statsValues, vScale) => {
-			const { cosTheta, inner, p, r, sinTheta, theta, thick, u, vertical } = statsValues;
-			let mask = fix3(Math.min(inner, thick) * mask01);
-			if (mask01 > 0 && mask === 0) {
-				if (inner === 0) {
-					// This is arbitrary, but it's reasonable.
-					mask = fix3(thick * mask01 * 0.25);
-				} else {
-					mask = fix3(thick * mask01);
-				}
-			}
-			setInfo($infoMask, mask);
-			const m = fix3(p * cosTheta);
-			const mInner = inner - mask;
-			const mOuter = r + mask;
-			const um = fix3(mask / sinTheta);
-			const mix = fix3(mInner * sinTheta);
-			const miy = fix3(mInner * cosTheta);
-			const drawH = fix3(mOuter * 2 * vScale);
-			const drawW = fix3(p * 2 + mask * 2 + r * 2);
-			return { drawH, drawW, m, mask, mInner, mOuter, mix, miy, p, theta, thick, u, um, vertical };
-		});
-		const gTransform = Spectacle.compose(this.#vScale, maskStats, (vScale, ms) => {
+		const gTransform = Spectacle.compose(this.#vScale, this.#maskStats, (vScale, ms) => {
 			return `translate(${ ms.drawW / 2 } ${ ms.drawH / 2 }) scale(1,${ -vScale })`;
 		});
-		const svg = new RickSVG($parent, maskStats.value.drawW, maskStats.value.drawH);
-		maskStats.watch((ms) => {
-			svg.svg.setAttributeNS(null, "viewBox", `0 0 ${ms.drawW} ${ms.drawH}`);
+		const svg = new RickSVG($parent, this.#maskStats.value.drawW, this.#maskStats.value.drawH);
+		this.#maskStats.watch((ms) => {
+			svg.svg.setAttributeNS(null, "viewBox", `0 0 ${ ms.drawW } ${ ms.drawH }`);
+			setInfo($infoMask, ms.mask);
 		});
 		svg.group((g, s) => {
 			gTransform.watch((transform) => {
@@ -186,7 +130,7 @@ export class NeuroPrideInf {
 			const rightMaskRing = s.path('<path d="" fill="black" stroke="none" />', g);
 			const leftMaskBar = s.rect('<rect fill="black" stroke="none" />', g);
 			const rightMaskBar = s.rect('<rect fill="black" stroke="none" />', g);
-			maskStats.map(({ m, mask, mInner, mOuter, mix, miy, p, theta, thick, u, um, vertical }) => {
+			this.#maskStats.map(({ m, mask, mInner, mOuter, mix, miy, p, theta, thick, u, um, vertical }) => {
 				if (mask > 0) {
 					if (mInner > 0) {
 						// Need to cut out the full teardrop.
@@ -231,7 +175,7 @@ export class NeuroPrideInf {
 			gTransform.watch((transform) => {
 				g.transform = transform;
 			}, true);
-			Spectacle.compose(this.#gradient, stats, this.#drawStrategy, this.#pattern, this.#behindDeg, (gradient, statsValues, drawStrategy, pattern, behindDeg) => {
+			Spectacle.compose(this.#gradient, this.#stats, this.#drawStrategy, this.#pattern, this.#behindDeg, (gradient, statsValues, drawStrategy, pattern, behindDeg) => {
 				for (const child of Array.from(svg.defs.childNodes)) {
 					svg.defs.removeChild(child);
 				}
@@ -258,6 +202,74 @@ export class NeuroPrideInf {
 		this.svg?.parentElement?.removeChild(this.svg);
 		const svg = this.asSVG($el);
 		this.svg = svg.svg;
+	}
+
+	private calculateMaskStats(mask01: number, statsValues: InfinityStats, vScale: number): MaskStats {
+		const { cosTheta, inner, p, r, sinTheta, theta, thick, u, vertical } = statsValues;
+		let mask = fix3(Math.min(inner, thick) * mask01);
+		if (mask01 > 0 && mask === 0) {
+			if (inner === 0) {
+				// This is arbitrary, but it's reasonable.
+				mask = fix3(thick * mask01 * 0.25);
+			} else {
+				mask = fix3(thick * mask01);
+			}
+		}
+		const m = fix3(p * cosTheta);
+		const mInner = inner - mask;
+		const mOuter = r + mask;
+		const um = fix3(mask / sinTheta);
+		const mix = fix3(mInner * sinTheta);
+		const miy = fix3(mInner * cosTheta);
+		const drawH = fix3(mOuter * 2 * vScale);
+		const drawW = fix3(p * 2 + mask * 2 + r * 2);
+		return { drawH, drawW, m, mask, mInner, mOuter, mix, miy, p, theta, thick, u, um, vertical };
+	}
+
+	private calculateStats(gap1: number, thickness01: number): InfinityStats {
+		const r = fix3(100);
+		let gap = fix3(r * gap1 * thickness01);
+		const thick01 = Math.max(thickness01, 0.01);
+		const inner01 = 1 - thick01;
+		const thick = fix3(thick01 * r);
+		const inner = fix3(inner01 * r);
+		const p = inner + thick + (gap / 2);
+		let thetaRad = fix3(Math.asin((inner + (thick / 2)) / p));
+		let theta = degFromRad(thetaRad);
+		let vertical = false;
+		if (Number.isNaN(thetaRad) || Number.isNaN(theta) || theta >= 90) {
+			theta = 90;
+			thetaRad = Math.PI / 2;
+			vertical = true;
+		}
+		let cosTheta, sinTheta, uOff, v;
+		if (vertical) {
+			cosTheta = 0;
+			sinTheta = 1;
+			uOff = 0;
+			v = 0;
+		} else {
+			cosTheta = Math.cos(thetaRad);
+			sinTheta = Math.sin(thetaRad);
+			uOff = Math.round(inner / sinTheta);
+			v = Math.round(thick / (2 * cosTheta));
+		}
+		const h = fix3(inner * cosTheta);
+		const qOff = Math.round(inner * sinTheta);
+		const q = p - qOff;
+		const u = p - uOff;
+		const jx = Math.round(p - (r * sinTheta));
+		const jy = Math.round(r * cosTheta);
+		let [ ix, iy ] = intersect([ -q, -h, jx, jy ], [ -q, h, -jx, jy ]).map((n) => n == null ? undefined : fix3(n));
+		// Intersection of the rings
+		// (x-p)^2 + y*y = r*r
+		// y = sqrt(r*r - p*p)
+		const riy = fix3(Math.sqrt(r * r - p * p));
+		return { cosTheta, gap, h, inner, ix, iy, jx, jy, q, p, r, riy, sinTheta, theta, thick, u, v, vertical };
+	}
+
+	get drawSize(): PointXY {
+		return [ this.#maskStats.value.drawW, this.#maskStats.value.drawH ];
 	}
 
 	private generatePaths(
@@ -524,5 +536,9 @@ export class NeuroPrideInf {
 			splits.push(path);
 		}
 		return splits;
+	}
+
+	get svgData(): string {
+		return this.svg?.parentElement?.innerHTML ?? "";
 	}
 }

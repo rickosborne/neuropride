@@ -1,4 +1,5 @@
 import { ancestor, byId } from "./dom-like.js";
+import type { PointXY } from "./geometry.js";
 import { asDrawStrategy, asPatternOrientation, NeuroPrideInf } from "./infinity.js";
 import { PALETTES } from "./palettes.js";
 import { hydrateFn } from "./templates.js";
@@ -34,6 +35,10 @@ document.addEventListener("DOMContentLoaded", () => {
 	const $maskR = byId("mask-r", HTMLInputElement);
 	const $vScaleR = byId("v-scale-r", HTMLInputElement);
 	const $behindDeg = byId("behind-deg-r", HTMLInputElement);
+	const $exportSVG = byId("export-svg", HTMLButtonElement);
+	const $exportPNG = byId("export-png", HTMLButtonElement);
+	let lastPalette: string = "";
+	let lastPattern: string = "";
 	const bigInf = new NeuroPrideInf({
 		behindDeg: maybeNum($behindDeg?.value, "int"),
 		gap: maybeNum($gapR?.value),
@@ -55,6 +60,7 @@ document.addEventListener("DOMContentLoaded", () => {
 				const palette = PALETTES.find((p) => p.name === name);
 				if (palette != null) {
 					bigInf.setGradient(palette.gradient);
+					lastPalette = palette.name;
 				}
 			}
 		});
@@ -75,6 +81,7 @@ document.addEventListener("DOMContentLoaded", () => {
 				if ($behindDeg != null) {
 					$behindDeg.disabled = value !== "behind";
 				}
+				lastPattern = value;
 			}
 		})
 	}
@@ -124,5 +131,96 @@ document.addEventListener("DOMContentLoaded", () => {
 	$behindDeg?.addEventListener("dblclick", () => {
 		$behindDeg.value = "0";
 		bigInf.setBehindDeg(0);
+	});
+	let exporting = false;
+	const setExporting = (toState: boolean) => {
+		exporting = toState;
+		$exportPNG!.disabled = exporting;
+		$exportSVG!.disabled = exporting;
+	};
+	const fileName = (suffix: string, size?: PointXY | undefined) => {
+		return [
+			"neuropride",
+			lastPalette?.replace(/[^a-zA-Z0-9]+/g, ""),
+			lastPattern,
+			lastPattern === "behind" ? $behindDeg?.value?.concat("deg") : "",
+			size == null ? "" : `${ size[ 0 ] }x${ size[ 1 ] }`,
+		].filter((p) => p != null && p !== "").join("-").concat(suffix);
+	};
+	$exportSVG?.addEventListener("click", (ev) => {
+		ev.stopPropagation();
+		if (exporting) {
+			return false;
+		}
+		setExporting(true);
+		const svg = bigInf.svgData;
+		const a = document.createElement("a");
+		a.setAttributeNS(null, "href", "data:image/svg;charset=utf-8,".concat(encodeURIComponent(svg)));
+		a.setAttributeNS(null, "download", fileName(".svg"));
+		a.style.display = "none";
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		setTimeout(() => setExporting(false), 1_000);
+		return false;
+	});
+	$exportPNG?.addEventListener("click", (ev) => {
+		ev.stopPropagation();
+		if (exporting) {
+			return false;
+		}
+		setExporting(true);
+		const cvs = document.createElement("canvas");
+		const dpr = (window.devicePixelRatio ?? 2) * 2;
+		const [ w, h ] = bigInf.drawSize;
+		const sw = Math.floor(w * dpr);
+		const sh = Math.floor(h * dpr);
+		console.log([ w, h, dpr, sw, sh ]);
+		cvs.style.width = `${ w }px`;
+		cvs.style.height = `${ h }px`;
+		cvs.width = sw;
+		cvs.height = sh;
+		document.body.appendChild(cvs);
+		console.log("created canvas", cvs);
+		const ctx = cvs.getContext("2d", { alpha: true });
+		if (ctx == null) {
+			console.error("Could not get a canvas context");
+			return;
+		}
+		ctx.imageSmoothingEnabled = true;
+		ctx.imageSmoothingQuality = "high";
+		console.log("creating image");
+		const img = new Image(sw, sh);
+		document.body.appendChild(img);
+		const svgData = bigInf.svgData;
+		const svgUrl = URL.createObjectURL(new Blob([ svgData ], { type: "image/svg+xml;charset=utf-8" }));
+		img.addEventListener("load", () => {
+			console.log("img load");
+			ctx.drawImage(img, 0, 0, sw, sh);
+			cvs.toBlob((blob) => {
+				if (blob == null) {
+					console.error("No blob");
+					return;
+				}
+				const dataUrl = URL.createObjectURL(blob);
+				const a = document.createElement("a");
+				a.setAttributeNS(null, "href", dataUrl);
+				a.setAttributeNS(null, "download", fileName(".png", [ sw, sh ]));
+				a.style.display = "none";
+				document.body.appendChild(a);
+				a.click();
+				URL.revokeObjectURL(svgUrl);
+				URL.revokeObjectURL(dataUrl);
+				document.body.removeChild(a);
+				document.body.removeChild(img);
+				document.body.removeChild(cvs);
+				setTimeout(() => setExporting(false), 1_000);
+			}, "image/png");
+		});
+		img.addEventListener("error", (ev) => {
+			console.error("Failed to load SVG into an Image", ev);
+		});
+		img.src = svgUrl;
+		return false;
 	});
 });

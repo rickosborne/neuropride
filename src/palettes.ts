@@ -203,15 +203,63 @@ const agender: Palette = {
 	],
 };
 
+const gay1979: Palette = {
+	name: "gay@1979",
+	gradient: [
+		["#e40303", 17],
+		["#ff8c00", 17],
+		["#ffed00", 16],
+		["#008026", 16],
+		["#004dff", 17],
+		["#750787", 17],
+	],
+};
+
+const philadelphia: Palette = {
+	name: "philadelphia",
+	gradient: [
+		["#111111", 12.5],
+		["#784F17", 12.5],
+		["#E40303", 12.5],
+		["#FF8C00", 12.5],
+		["#FFED00", 12.5],
+		["#008026", 12.5],
+		["#004DFF", 12.5],
+		["#750787", 12.5],
+	],
+};
+
+const polysexual: Palette = {
+	name: "polysexual",
+	gradient: [
+		["#F61CB9", 33],
+		["#07D569", 34],
+		["#1C92F6", 33],
+	],
+};
+
+const aroace: Palette = {
+	name: "aroace",
+	gradient: [
+		["#E28C00", 20],
+		["#ECCD00", 20],
+		["#EEEEEE", 20],
+		["#62AEDC", 20],
+		["#203856", 20],
+	],
+};
+
 export const PALETTES: readonly Palette[] = Object.freeze([
 	agender,
 	androgyne,
+	aroace,
 	aromantic,
 	asexual,
 	bisexual,
 	demiromantic,
 	demisexual3,
 	demisexual4,
+	gay1979,
 	genderfluid4,
 	genderfluid5,
 	genderqueer,
@@ -220,7 +268,9 @@ export const PALETTES: readonly Palette[] = Object.freeze([
 	nonbinary3,
 	nonbinary4,
 	pansexual,
+	philadelphia,
 	polyam,
+	polysexual,
 	progress,
 	trans,
 ]);
