@@ -1,7 +1,4 @@
-export type GradientSegment = [ color: string, percent100: number ];
-export type MeasuredGradientSegment = [ color: string, startPercent100: number, endPercent100: number ];
-
-export type Gradient = GradientSegment[];
+import type { Gradient, MeasuredGradientSegment } from "./types.js";
 
 export const GRADIENT_DEFAULT: Readonly<Gradient> = Object.freeze([
 	[ "red", 17 ],

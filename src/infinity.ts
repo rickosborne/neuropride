@@ -1,66 +1,14 @@
 import { byId } from "./dom-like.js";
 import { degFromRad, fix3, intersect, type PointXY, radFromDeg } from "./geometry.js";
-import { type Gradient, GRADIENT_DEFAULT, type MeasuredGradientSegment, measureGradient, reverseGradient } from "./gradient.js";
+import { GRADIENT_DEFAULT, measureGradient, reverseGradient } from "./gradient.js";
 import { Arc, type DrawPart, Neck, type Pathable, Quad, Triangle } from "./pathable.js";
 import { randomId } from "./random-id.js";
 import { Spectacle } from "./spectacle.js";
-import { RickSVG, type SVGElementProxy, svgProxy } from "./svg.js";
-
-export type DrawStrategy = "filled" | "split";
-export type PatternOrientation = "behind" | "lanes" | "queue";
+import { RickSVG, svgProxy } from "./svg.js";
+import type { DrawStrategy, Gradient, InfinityStats, InfSpec, MaskStats, MeasuredGradientSegment, PatternOrientation, SVGElementProxy, SVGPathProxy, SVGRectProxy } from "./types.js";
 
 export const asDrawStrategy = (ds: string): DrawStrategy => ds === "split" ? "split" : "filled";
 export const asPatternOrientation = (po: string): PatternOrientation => po === "behind" || po === "lanes" ? po : "queue";
-
-export interface InfSpec {
-	behindDeg?: number | undefined;
-	drawStrategy?: DrawStrategy | undefined;
-	gap?: number | undefined;
-	gradient?: Gradient | undefined;
-	inner: number;
-	mask: number;
-	pattern?: PatternOrientation | undefined;
-	thickness: number;
-	vScale: number;
-}
-
-interface InfinityStats {
-	cosTheta: number;
-	gap: number;
-	h: number;
-	inner: number;
-	ix: number | undefined;
-	iy: number | undefined;
-	jx: number;
-	jy: number;
-	p: number;
-	q: number;
-	r: number;
-	riy: number;
-	sinTheta: number;
-	theta: number;
-	thick: number;
-	u: number;
-	v: number;
-	vertical: boolean;
-}
-
-interface MaskStats {
-	drawH: number;
-	drawW: number;
-	m: number;
-	mInner: number;
-	mOuter: number;
-	mask: number;
-	mix: number;
-	miy: number;
-	p: number;
-	theta: number;
-	thick: number;
-	u: number;
-	um: number;
-	vertical: boolean
-}
 
 export class NeuroPrideInf {
 	readonly #behindDeg: Spectacle<number>;
@@ -130,45 +78,8 @@ export class NeuroPrideInf {
 			const rightMaskRing = s.path('<path d="" fill="black" stroke="none" />', g);
 			const leftMaskBar = s.rect('<rect fill="black" stroke="none" />', g);
 			const rightMaskBar = s.rect('<rect fill="black" stroke="none" />', g);
-			this.#maskStats.map(({ m, mask, mInner, mOuter, mix, miy, p, theta, thick, u, um, vertical }) => {
-				if (mask > 0) {
-					if (mInner > 0) {
-						// Need to cut out the full teardrop.
-						leftMaskRing.d = `M ${ fix3(-p + mOuter) },0 A ${ mOuter },${ mOuter } 0 1 0 ${ -p - mOuter },0 h ${ thick + mask + mask } A ${ mInner },${ mInner } 0 0 1 ${ -p + mix },${ -miy } L ${ -u - um },0 L ${ -p + mix },${ miy } A ${ mInner },${ mInner } 0 0 1 ${ -p - mInner },0 h ${ -thick - mask - mask } A ${ mOuter },${ mOuter } 0 0 0 ${ -p + mOuter },0 z`;
-						rightMaskRing.d = `M ${ fix3(p - mOuter) },0 A ${ mOuter },${ mOuter } 0 1 0 ${ p + mOuter },0 h ${ -thick - mask - mask } A ${ mInner },${ mInner } 0 0 1 ${ p - mix },${ miy } L ${ u + um },0 L ${ p - mix },${ -miy } A ${ mInner },${ mInner } 0 0 1 ${ p + mInner },0 h ${ thick + mask + mask } A ${ mOuter },${ mOuter } 0 0 0 ${ p - mOuter },0 z`;
-					} else {
-						// No cutout, just circles.
-						leftMaskRing.d = `M ${ -p + mOuter },0 A ${ mOuter },${ mOuter } 0 1 0 ${ -p - mOuter },0 A ${ mOuter },${ mOuter } 0 1 0 ${ -p + mOuter },0 z`;
-						rightMaskRing.d = `M ${ p + mOuter },0 A ${ mOuter },${ mOuter } 0 1 0 ${ p - mOuter },0 A ${ mOuter },${ mOuter } 0 1 0 ${ p + mOuter },0 z`;
-					}
-					if (vertical) {
-						// No mask crossbars.
-						leftMaskBar.width = 0;
-						leftMaskBar.height = 0;
-						rightMaskBar.width = 0;
-						rightMaskBar.height = 0;
-					} else {
-						// Full mask crossbars.
-						leftMaskBar.x = -m;
-						leftMaskBar.y = (thick / -2) - mask;
-						leftMaskBar.width = 2 * m;
-						leftMaskBar.height = thick + mask + mask;
-						leftMaskBar.transform = `rotate(${ theta })`;
-						rightMaskBar.x = -m;
-						rightMaskBar.y = (thick / -2) - mask;
-						rightMaskBar.width = 2 * m;
-						rightMaskBar.height = thick + mask + mask;
-						rightMaskBar.transform = `rotate(${ -theta })`;
-					}
-				} else {
-					// No mask at all.
-					leftMaskBar.width = 0;
-					leftMaskBar.height = 0;
-					rightMaskBar.width = 0;
-					rightMaskBar.height = 0;
-					leftMaskRing.d = "";
-					rightMaskRing.d = "";
-				}
+			this.#maskStats.watch((maskStats) => {
+				this.manipulateMask(maskStats, leftMaskRing, rightMaskRing, leftMaskBar, rightMaskBar);
 			});
 		});
 		svg.group((g, s) => {
@@ -351,6 +262,48 @@ export class NeuroPrideInf {
 			front.push(new Quad(`path-${ rootId }-bigCross`, "Overbar", -q, -h, jx, jy, q, h, -jx, -jy));
 		}
 		return front.concat(back);
+	}
+
+	private manipulateMask(maskStats: MaskStats, leftMaskRing: SVGPathProxy, rightMaskRing: SVGPathProxy, leftMaskBar: SVGRectProxy, rightMaskBar: SVGRectProxy): void {
+		const { m, mInner, mOuter, mask, mix, miy, p, thick, theta, u, um, vertical } = maskStats;
+		if (mask > 0) {
+			if (mInner > 0) {
+				// Need to cut out the full teardrop.
+				leftMaskRing.d = `M ${ fix3(-p + mOuter) },0 A ${ mOuter },${ mOuter } 0 1 0 ${ -p - mOuter },0 h ${ thick + mask + mask } A ${ mInner },${ mInner } 0 0 1 ${ -p + mix },${ -miy } L ${ -u - um },0 L ${ -p + mix },${ miy } A ${ mInner },${ mInner } 0 0 1 ${ -p - mInner },0 h ${ -thick - mask - mask } A ${ mOuter },${ mOuter } 0 0 0 ${ -p + mOuter },0 z`;
+				rightMaskRing.d = `M ${ fix3(p - mOuter) },0 A ${ mOuter },${ mOuter } 0 1 0 ${ p + mOuter },0 h ${ -thick - mask - mask } A ${ mInner },${ mInner } 0 0 1 ${ p - mix },${ miy } L ${ u + um },0 L ${ p - mix },${ -miy } A ${ mInner },${ mInner } 0 0 1 ${ p + mInner },0 h ${ thick + mask + mask } A ${ mOuter },${ mOuter } 0 0 0 ${ p - mOuter },0 z`;
+			} else {
+				// No cutout, just circles.
+				leftMaskRing.d = `M ${ -p + mOuter },0 A ${ mOuter },${ mOuter } 0 1 0 ${ -p - mOuter },0 A ${ mOuter },${ mOuter } 0 1 0 ${ -p + mOuter },0 z`;
+				rightMaskRing.d = `M ${ p + mOuter },0 A ${ mOuter },${ mOuter } 0 1 0 ${ p - mOuter },0 A ${ mOuter },${ mOuter } 0 1 0 ${ p + mOuter },0 z`;
+			}
+			if (vertical) {
+				// No mask crossbars.
+				leftMaskBar.width = 0;
+				leftMaskBar.height = 0;
+				rightMaskBar.width = 0;
+				rightMaskBar.height = 0;
+			} else {
+				// Full mask crossbars.
+				leftMaskBar.x = -m;
+				leftMaskBar.y = (thick / -2) - mask;
+				leftMaskBar.width = 2 * m;
+				leftMaskBar.height = thick + mask + mask;
+				leftMaskBar.transform = `rotate(${ theta })`;
+				rightMaskBar.x = -m;
+				rightMaskBar.y = (thick / -2) - mask;
+				rightMaskBar.width = 2 * m;
+				rightMaskBar.height = thick + mask + mask;
+				rightMaskBar.transform = `rotate(${ -theta })`;
+			}
+		} else {
+			// No mask at all.
+			leftMaskBar.width = 0;
+			leftMaskBar.height = 0;
+			rightMaskBar.width = 0;
+			rightMaskBar.height = 0;
+			leftMaskRing.d = "";
+			rightMaskRing.d = "";
+		}
 	}
 
 	private paintBehind(paths: Readonly<Pathable[]>, gradient: Readonly<Gradient>, svg: RickSVG, rootId: string, r: number, gap: number, behindDeg: number): void {

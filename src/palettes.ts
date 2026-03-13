@@ -1,4 +1,4 @@
-import type { Gradient } from "./gradient.js";
+import type { Gradient } from "./types.js";
 
 export interface Palette {
 	name: string;

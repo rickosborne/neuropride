@@ -1,7 +1,8 @@
 import { formatStyle } from "./dom-like.js";
 import { fix3, type PointXY, radFromDeg } from "./geometry.js";
-import type { MeasuredGradientSegment } from "./gradient.js";
-import { type RickSVG, type SVGElementProxy, svgProxy } from "./svg.js";
+import type { RickSVG } from "./svg.js";
+import { svgProxy } from "./svg.js";
+import type { MeasuredGradientSegment, SVGElementProxy } from "./types.js";
 
 type StrokeDetails = string | [ stroke: string, strokeWidth: number ];
 
