@@ -220,23 +220,23 @@ input[type=range] {
 }
 
 #export {
-	background: linear-gradient(0deg, #33333333, #33333399), var(--cd);
 	box-sizing: border-box;
 	color: var(--ct);
 	display: flex;
 	flex-direction: row;
-	gap: 1em;
+	gap: 0;
 	height: 5vw;
 	justify-content: end;
 	left: 30vw;
 	position: fixed;
 	right: 0;
 	top: 5vw;
+	z-index: 5;
 }
 
 #export button {
 	align-items: center;
-	background: none;
+	background: transparent;
 	border: 2px solid transparent;
 	color: var(--ct);
 	display: flex;
@@ -246,6 +246,7 @@ input[type=range] {
 }
 
 #export button:hover, #export button:focus {
+	background: linear-gradient(0deg, #33333333, #33333399), var(--cd);
 	border: 2px solid var(--ca);
 	border-radius: 0.5em;
 	color: var(--ca);
@@ -316,7 +317,8 @@ tr.selected label {
 	left: 30vw;
 	position: absolute;
 	right: 0;
-	top: 5vw;
+	top: 0;
+	z-index: 1;
 }
 
 .checkerboard {
