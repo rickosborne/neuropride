@@ -6,7 +6,7 @@
 	"dependencies": {
 
 	},
-	"description": "",
+	"description": "Source for rickosborne.org/neuropride",
 	"devDependencies": {
 		"@chialab/esbuild-plugin-html": "0.19.1",
 		"@types/node": "25.3.5",
