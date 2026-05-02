@@ -4,7 +4,6 @@
 		"url": "https://rickosborne.org"
 	},
 	"dependencies": {
-
 	},
 	"description": "Source for rickosborne.org/neuropride",
 	"devDependencies": {

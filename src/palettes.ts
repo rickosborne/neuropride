@@ -249,6 +249,15 @@ const aroace: Palette = {
 	],
 };
 
+const maverique: Palette = {
+	name: "maverique",
+	gradient: [
+		["#FCF332", 34],
+		["#EEEEEE", 32],
+		["#F2961F", 34],
+	],
+}
+
 export const PALETTES: readonly Palette[] = Object.freeze([
 	agender,
 	androgyne,
@@ -264,6 +273,7 @@ export const PALETTES: readonly Palette[] = Object.freeze([
 	genderfluid5,
 	genderqueer,
 	lesbian,
+	maverique,
 	mentalHealth,
 	nonbinary3,
 	nonbinary4,
